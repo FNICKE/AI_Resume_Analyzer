@@ -1,0 +1,29 @@
+# Eclipse Metadata Exclusions
+.metadata/
+.recommenders/
+RemoteSystemsTempFiles/
+.project
+.classpath
+.settings/
+*.launch
+
+# Backend Exclusions
+resume-analyzer-backend/target/
+resume-analyzer-backend/.classpath
+resume-analyzer-backend/.project
+resume-analyzer-backend/.settings/
+resume-analyzer-backend/bin/
+resume-analyzer-backend/mvn-failed.txt
+
+# Frontend Exclusions
+resume-analyzer-frontend/node_modules/
+resume-analyzer-frontend/dist/
+resume-analyzer-frontend/.eslintcache
+resume-analyzer-frontend/local.properties
+
+# Temporary and Log files
+*.log
+.DS_Store
+Thumbs.db
+.env.local
+.env.*.local
