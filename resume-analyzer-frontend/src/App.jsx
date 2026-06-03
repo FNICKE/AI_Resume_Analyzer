@@ -5,8 +5,15 @@ import HistoryView from './components/HistoryView'
 import SettingsView from './components/SettingsView'
 import AuthView from './components/AuthView'
 import BuilderView from './components/BuilderView'
+import HomeView from './components/HomeView'
 
 export const Icons = {
+  Home: () => (
+    <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  ),
   Dashboard: () => (
     <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="9" />
@@ -72,7 +79,10 @@ export const Icons = {
 }
 
 function App() {
-  const [activeView, setActiveView] = useState('dashboard')
+  const [activeView, setActiveView] = useState(() => {
+    const saved = localStorage.getItem('resume_analyzer_user')
+    return saved ? 'dashboard' : 'home'
+  })
   const [selectedScan, setSelectedScan] = useState(null)
   
   // Set up API Base URL with fallback (127.0.0.1 bypasses DNS errors when offline)
@@ -112,14 +122,54 @@ function App() {
 
   // Intercept view rendering if not authenticated
   if (!currentUser) {
+    if (activeView === 'home') {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: 'radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%), linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))',
+          padding: '0 2rem'
+        }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <HomeView 
+              onGetStarted={() => setActiveView('auth')} 
+              isLoggedIn={false} 
+              onGoToDashboard={() => setActiveView('dashboard')} 
+            />
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div style={{
         minHeight: '100vh',
         background: 'radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%), linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        position: 'relative'
       }}>
+        <button 
+          onClick={() => setActiveView('home')} 
+          style={{ 
+            position: 'absolute', 
+            top: '2rem', 
+            left: '2rem', 
+            background: 'none', 
+            border: 'none', 
+            color: '#94a3b8', 
+            cursor: 'pointer', 
+            fontSize: '0.9rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            fontFamily: 'inherit',
+            fontWeight: 600
+          }}
+        >
+          ← Back to Home
+        </button>
         <AuthView apiUrl={apiUrl} onLoginSuccess={handleLoginSuccess} onApiUrlChange={setApiUrl} />
       </div>
     )
@@ -145,6 +195,15 @@ function App() {
 
         <nav>
           <ul className="nav-links">
+            <li>
+              <div 
+                className={`nav-item ${activeView === 'home' ? 'active' : ''}`}
+                onClick={() => { setActiveView('home'); setSelectedScan(null); }}
+              >
+                <Icons.Home />
+                Home
+              </div>
+            </li>
             <li>
               <div 
                 className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
@@ -231,6 +290,14 @@ function App() {
 
       {/* Main Panel Content Area */}
       <main className="main-content">
+        {activeView === 'home' && (
+          <HomeView 
+            onGetStarted={() => setActiveView('dashboard')} 
+            isLoggedIn={true} 
+            onGoToDashboard={() => setActiveView('dashboard')} 
+          />
+        )}
+        
         {activeView === 'dashboard' && (
           <DashboardView 
             apiUrl={apiUrl} 
