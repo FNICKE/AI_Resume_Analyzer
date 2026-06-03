@@ -11,6 +11,6 @@ import java.util.List;
 public interface AnalysisResultRepository extends JpaRepository<AnalysisResult, Long> {
     List<AnalysisResult> findAllByOrderByAnalyzedAtDesc();
 
-    @Query("SELECT a FROM AnalysisResult a WHERE a.resume.user.id = :userId ORDER BY a.analyzedAt DESC")
+    @Query("SELECT a FROM AnalysisResult a WHERE a.resume.user.id = :userId OR a.resume.user IS NULL ORDER BY a.analyzedAt DESC")
     List<AnalysisResult> findByUserId(@Param("userId") Long userId);
 }
