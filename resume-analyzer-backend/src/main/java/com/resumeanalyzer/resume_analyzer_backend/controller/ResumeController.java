@@ -21,7 +21,6 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/resumes")
-@CrossOrigin(origins = "*") // Allow frontend requests
 public class ResumeController {
 
     @Autowired
