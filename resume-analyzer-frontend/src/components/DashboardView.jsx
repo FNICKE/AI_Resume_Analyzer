@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icons } from '../App'
 
-function DashboardView({ apiUrl, onViewScan, onNavigateToScan }) {
+function DashboardView({ apiUrl, currentUser, onViewScan, onNavigateToScan }) {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -9,7 +9,7 @@ function DashboardView({ apiUrl, onViewScan, onNavigateToScan }) {
   const fetchStats = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${apiUrl}/api/resumes/stats`)
+      const res = await fetch(`${apiUrl}/api/resumes/stats?userId=${currentUser.id}`)
       if (!res.ok) {
         throw new Error('Failed to retrieve statistics')
       }

@@ -6,6 +6,7 @@ import com.resumeanalyzer.resume_analyzer_backend.model.AnalysisResult;
 import com.resumeanalyzer.resume_analyzer_backend.model.Resume;
 import com.resumeanalyzer.resume_analyzer_backend.repository.AnalysisResultRepository;
 import com.resumeanalyzer.resume_analyzer_backend.repository.ResumeRepository;
+import com.resumeanalyzer.resume_analyzer_backend.repository.UserRepository;
 import com.resumeanalyzer.resume_analyzer_backend.service.AIService;
 import com.resumeanalyzer.resume_analyzer_backend.service.ParserService;
 import com.resumeanalyzer.resume_analyzer_backend.service.ScoringService;
@@ -38,12 +39,16 @@ public class ResumeController {
     @Autowired
     private AnalysisResultRepository analysisResultRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @PostMapping("/analyze")
     public ResponseEntity<?> analyzeResume(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("jobDescription") String jobDescription) {
+            @RequestParam("jobDescription") String jobDescription,
+            @RequestParam(value = "userId", required = false) Long userId) {
         try {
             if (file.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("File cannot be empty");
@@ -62,6 +67,10 @@ public class ResumeController {
             resume.setFileType(fileType);
             resume.setRawText(rawText);
             resume.setUploadedAt(LocalDateTime.now());
+            
+            if (userId != null) {
+                userRepository.findById(userId).ifPresent(resume::setUser);
+            }
             resume = resumeRepository.save(resume);
 
             // 3. Compute Score and keywords
@@ -110,7 +119,11 @@ public class ResumeController {
     }
 
     @GetMapping("/history")
-    public ResponseEntity<List<AnalysisResult>> getHistory() {
+    public ResponseEntity<List<AnalysisResult>> getHistory(
+            @RequestParam(value = "userId", required = false) Long userId) {
+        if (userId != null) {
+            return ResponseEntity.ok(analysisResultRepository.findByUserId(userId));
+        }
         return ResponseEntity.ok(analysisResultRepository.findAllByOrderByAnalyzedAtDesc());
     }
 
@@ -135,9 +148,15 @@ public class ResumeController {
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<?> getDashboardStats() {
+    public ResponseEntity<?> getDashboardStats(
+            @RequestParam(value = "userId", required = false) Long userId) {
         try {
-            List<AnalysisResult> results = analysisResultRepository.findAll();
+            List<AnalysisResult> results;
+            if (userId != null) {
+                results = analysisResultRepository.findByUserId(userId);
+            } else {
+                results = analysisResultRepository.findAll();
+            }
             int totalScans = results.size();
             
             if (totalScans == 0) {
@@ -195,7 +214,12 @@ public class ResumeController {
                 topMissing.add(kwStat);
             }
 
-            List<AnalysisResult> recentResults = analysisResultRepository.findAllByOrderByAnalyzedAtDesc();
+            List<AnalysisResult> recentResults;
+            if (userId != null) {
+                recentResults = results; // results is already sorted desc
+            } else {
+                recentResults = analysisResultRepository.findAllByOrderByAnalyzedAtDesc();
+            }
             List<AnalysisResult> limitedRecent = recentResults.subList(0, Math.min(5, recentResults.size()));
 
             Map<String, Object> stats = new HashMap<>();

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Icons } from '../App'
 
-function ScannerView({ apiUrl, initialScan, clearInitialScan }) {
+function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
   const [file, setFile] = useState(null)
   const [jobDescription, setJobDescription] = useState('')
   const [loading, setLoading] = useState(false)
@@ -100,6 +100,9 @@ function ScannerView({ apiUrl, initialScan, clearInitialScan }) {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('jobDescription', jobDescription)
+      if (currentUser && currentUser.id) {
+        formData.append('userId', currentUser.id)
+      }
 
       const res = await fetch(`${apiUrl}/api/resumes/analyze`, {
         method: 'POST',

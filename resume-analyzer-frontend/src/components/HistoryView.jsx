@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Icons } from '../App'
 
-function HistoryView({ apiUrl, onViewScan }) {
+function HistoryView({ apiUrl, currentUser, onViewScan }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -9,7 +9,7 @@ function HistoryView({ apiUrl, onViewScan }) {
   const fetchHistory = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${apiUrl}/api/resumes/history`)
+      const res = await fetch(`${apiUrl}/api/resumes/history?userId=${currentUser.id}`)
       if (!res.ok) {
         throw new Error('Failed to retrieve history logs')
       }

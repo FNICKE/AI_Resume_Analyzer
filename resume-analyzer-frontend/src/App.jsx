@@ -3,8 +3,8 @@ import DashboardView from './components/DashboardView'
 import ScannerView from './components/ScannerView'
 import HistoryView from './components/HistoryView'
 import SettingsView from './components/SettingsView'
+import AuthView from './components/AuthView'
 
-// Custom SVG Icons helper to ensure 100% reliability and zero package install issues
 export const Icons = {
   Dashboard: () => (
     <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -68,19 +68,54 @@ function App() {
   const [activeView, setActiveView] = useState('dashboard')
   const [selectedScan, setSelectedScan] = useState(null)
   
-  // Set up API Base URL with fallback to window origin port 8080
+  // Set up API Base URL with fallback
   const [apiUrl, setApiUrl] = useState(() => {
     return localStorage.getItem('resume_analyzer_api_url') || 'http://localhost:8080'
+  })
+
+  // Load user session from localStorage
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('resume_analyzer_user')
+    return saved ? JSON.parse(saved) : null
   })
 
   useEffect(() => {
     localStorage.setItem('resume_analyzer_api_url', apiUrl)
   }, [apiUrl])
 
-  // Allows views to navigate and show details of a specific scan
+  const handleLoginSuccess = (userData) => {
+    localStorage.setItem('resume_analyzer_user', JSON.stringify(userData))
+    setCurrentUser(userData)
+    setActiveView('dashboard')
+  }
+
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      localStorage.removeItem('resume_analyzer_user')
+      setCurrentUser(null)
+      setSelectedScan(null)
+      setActiveView('dashboard')
+    }
+  }
+
   const viewScanResult = (scan) => {
     setSelectedScan(scan)
     setActiveView('scanner')
+  }
+
+  // Intercept view rendering if not authenticated
+  if (!currentUser) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%), linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <AuthView apiUrl={apiUrl} onLoginSuccess={handleLoginSuccess} />
+      </div>
+    )
   }
 
   return (
@@ -142,12 +177,39 @@ function App() {
           </ul>
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="user-avatar">ATS</div>
-          <div className="user-info">
-            <h4>Developer Mode</h4>
-            <p>Ready to Scan</p>
+        {/* Sidebar Footer displaying authenticated user */}
+        <div className="sidebar-footer" style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="user-avatar">{currentUser.username.substring(0, 2).toUpperCase()}</div>
+            <div className="user-info">
+              <h4 style={{ textTransform: 'capitalize' }}>{currentUser.username}</h4>
+              <p>Logged In</p>
+            </div>
           </div>
+          <button 
+            onClick={handleLogout} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: '#ef4444', 
+              cursor: 'pointer', 
+              padding: '0.25rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              borderRadius: '6px',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            title="Sign Out"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </aside>
 
@@ -156,6 +218,7 @@ function App() {
         {activeView === 'dashboard' && (
           <DashboardView 
             apiUrl={apiUrl} 
+            currentUser={currentUser}
             onViewScan={viewScanResult} 
             onNavigateToScan={() => setActiveView('scanner')}
           />
@@ -164,6 +227,7 @@ function App() {
         {activeView === 'scanner' && (
           <ScannerView 
             apiUrl={apiUrl} 
+            currentUser={currentUser}
             initialScan={selectedScan} 
             clearInitialScan={() => setSelectedScan(null)}
           />
@@ -172,6 +236,7 @@ function App() {
         {activeView === 'history' && (
           <HistoryView 
             apiUrl={apiUrl} 
+            currentUser={currentUser}
             onViewScan={viewScanResult} 
           />
         )}
