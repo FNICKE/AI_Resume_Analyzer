@@ -4,6 +4,7 @@ import ScannerView from './components/ScannerView'
 import HistoryView from './components/HistoryView'
 import SettingsView from './components/SettingsView'
 import AuthView from './components/AuthView'
+import BuilderView from './components/BuilderView'
 
 export const Icons = {
   Dashboard: () => (
@@ -12,6 +13,12 @@ export const Icons = {
       <rect x="14" y="3" width="7" height="5" />
       <rect x="14" y="12" width="7" height="9" />
       <rect x="3" y="16" width="7" height="5" />
+    </svg>
+  ),
+  Builder: () => (
+    <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   ),
   Scanner: () => (
@@ -158,6 +165,15 @@ function App() {
             </li>
             <li>
               <div 
+                className={`nav-item ${activeView === 'builder' ? 'active' : ''}`}
+                onClick={() => { setActiveView('builder'); setSelectedScan(null); }}
+              >
+                <Icons.Builder />
+                Resume Builder
+              </div>
+            </li>
+            <li>
+              <div 
                 className={`nav-item ${activeView === 'history' ? 'active' : ''}`}
                 onClick={() => { setActiveView('history'); setSelectedScan(null); }}
               >
@@ -245,6 +261,13 @@ function App() {
           <SettingsView 
             apiUrl={apiUrl} 
             setApiUrl={setApiUrl} 
+          />
+        )}
+
+        {activeView === 'builder' && (
+          <BuilderView 
+            apiUrl={apiUrl} 
+            currentUser={currentUser}
           />
         )}
       </main>
