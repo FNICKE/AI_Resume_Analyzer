@@ -111,7 +111,7 @@ function App() {
       localStorage.removeItem('resume_analyzer_user')
       setCurrentUser(null)
       setSelectedScan(null)
-      setActiveView('dashboard')
+      setActiveView('home')
     }
   }
 
@@ -195,15 +195,6 @@ function App() {
 
         <nav>
           <ul className="nav-links">
-            <li>
-              <div 
-                className={`nav-item ${activeView === 'home' ? 'active' : ''}`}
-                onClick={() => { setActiveView('home'); setSelectedScan(null); }}
-              >
-                <Icons.Home />
-                Home
-              </div>
-            </li>
             <li>
               <div 
                 className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
@@ -290,14 +281,6 @@ function App() {
 
       {/* Main Panel Content Area */}
       <main className="main-content">
-        {activeView === 'home' && (
-          <HomeView 
-            onGetStarted={() => setActiveView('dashboard')} 
-            isLoggedIn={true} 
-            onGoToDashboard={() => setActiveView('dashboard')} 
-          />
-        )}
-        
         {activeView === 'dashboard' && (
           <DashboardView 
             apiUrl={apiUrl} 
