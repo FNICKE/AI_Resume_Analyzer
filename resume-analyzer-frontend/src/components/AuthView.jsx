@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-function AuthView({ apiUrl, onLoginSuccess }) {
+function AuthView({ apiUrl, onLoginSuccess, onApiUrlChange }) {
   const [isLogin, setIsLogin] = useState(true)
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -9,6 +9,8 @@ function AuthView({ apiUrl, onLoginSuccess }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [localApiUrl, setLocalApiUrl] = useState(apiUrl)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -34,7 +36,6 @@ function AuthView({ apiUrl, onLoginSuccess }) {
         setError('Passwords do not match')
         return
       }
-      // Simple email validation regex
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         setError('Please enter a valid email address')
         return
@@ -46,7 +47,7 @@ function AuthView({ apiUrl, onLoginSuccess }) {
       
       if (isLogin) {
         // Handle Login
-        const res = await fetch(`${apiUrl}/api/auth/login`, {
+        const res = await fetch(`${localApiUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
@@ -61,7 +62,7 @@ function AuthView({ apiUrl, onLoginSuccess }) {
         onLoginSuccess(userData)
       } else {
         // Handle Register
-        const res = await fetch(`${apiUrl}/api/auth/register`, {
+        const res = await fetch(`${localApiUrl}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, email, password })
@@ -79,7 +80,7 @@ function AuthView({ apiUrl, onLoginSuccess }) {
       }
     } catch (err) {
       console.error(err)
-      setError(err.message)
+      setError(`${err.message}. (Tip: If you are offline, check your Connection Settings below and try using 127.0.0.1 instead of localhost)`)
     } finally {
       setLoading(false)
     }
@@ -145,7 +146,8 @@ function AuthView({ apiUrl, onLoginSuccess }) {
             marginBottom: '1.25rem',
             color: '#f87171',
             fontSize: '0.88rem',
-            borderRadius: '8px'
+            borderRadius: '8px',
+            lineHeight: '1.4'
           }}>
             ⚠️ {error}
           </div>
@@ -252,6 +254,36 @@ function AuthView({ apiUrl, onLoginSuccess }) {
                 Sign In instead
               </span>
             </p>
+          )}
+        </div>
+
+        {/* Collapsible Connection Settings for Troubleshooting */}
+        <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem', textAlign: 'center' }}>
+          <span 
+            onClick={() => setShowSettings(!showSettings)} 
+            style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {showSettings ? 'Hide Connection Settings' : 'Show Connection Settings'}
+          </span>
+          
+          {showSettings && (
+            <div style={{ marginTop: '0.75rem', textAlign: 'left' }} className="form-group">
+              <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }} htmlFor="auth-api-url">Spring Boot API Base URL</label>
+              <input
+                id="auth-api-url"
+                type="text"
+                className="form-input"
+                style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem', marginTop: '0.25rem' }}
+                value={localApiUrl}
+                onChange={(e) => {
+                  setLocalApiUrl(e.target.value)
+                  onApiUrlChange(e.target.value)
+                }}
+              />
+              <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.25rem', lineHeight: '1.3' }}>
+                If offline, try using 127.0.0.1 instead of localhost to bypass local DNS resolution rules.
+              </p>
+            </div>
           )}
         </div>
       </div>

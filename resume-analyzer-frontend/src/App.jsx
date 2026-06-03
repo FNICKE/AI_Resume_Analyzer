@@ -68,9 +68,9 @@ function App() {
   const [activeView, setActiveView] = useState('dashboard')
   const [selectedScan, setSelectedScan] = useState(null)
   
-  // Set up API Base URL with fallback
+  // Set up API Base URL with fallback (127.0.0.1 bypasses DNS errors when offline)
   const [apiUrl, setApiUrl] = useState(() => {
-    return localStorage.getItem('resume_analyzer_api_url') || 'http://localhost:8080'
+    return localStorage.getItem('resume_analyzer_api_url') || 'http://127.0.0.1:8080'
   })
 
   // Load user session from localStorage
@@ -113,7 +113,7 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <AuthView apiUrl={apiUrl} onLoginSuccess={handleLoginSuccess} />
+        <AuthView apiUrl={apiUrl} onLoginSuccess={handleLoginSuccess} onApiUrlChange={setApiUrl} />
       </div>
     )
   }
