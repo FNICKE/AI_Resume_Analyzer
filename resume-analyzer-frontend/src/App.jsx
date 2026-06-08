@@ -97,7 +97,7 @@ function App() {
   
   // Set up API Base URL with fallback (127.0.0.1 bypasses DNS errors when offline)
   const [apiUrl, setApiUrl] = useState(() => {
-    const stored = localStorage.getItem('resume_analyzer_api_url') || 'http://127.0.0.1:8080';
+    const stored = localStorage.getItem('resume_analyzer_api_url') || 'https://ai-resume-analyzer-ffp9.onrender.com';
     return stored.replace('localhost', '127.0.0.1');
   });
 
