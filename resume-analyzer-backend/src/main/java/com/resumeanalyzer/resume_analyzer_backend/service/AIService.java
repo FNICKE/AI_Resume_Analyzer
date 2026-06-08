@@ -12,6 +12,9 @@ public class AIService {
     @Value("${gemini.api.key:}")
     private String geminiApiKey;
 
+    @Value("${gemini.model:gemini-2.0-flash}")
+    private String geminiModel;
+
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -28,7 +31,10 @@ public class AIService {
 
         if (geminiApiKey != null && !geminiApiKey.trim().isEmpty()) {
             try {
-                return callGeminiAPI(resumeText, jobDescText, atsScore, missingKeywords);
+                Map<String, Object> suggestions = callGeminiAPI(resumeText, jobDescText, atsScore, missingKeywords);
+                if (suggestions != null && !suggestions.isEmpty()) {
+                    return suggestions;
+                }
             } catch (Exception e) {
                 System.err.println("Error calling Gemini API: " + e.getMessage() + ". Falling back to rule-based analysis.");
             }
@@ -40,6 +46,8 @@ public class AIService {
         suggestions.put("formattingSuggestions", generateFormattingSuggestions(detectedSections, resumeText.length()));
         suggestions.put("keywordSuggestions", generateKeywordSuggestions(missingKeywords));
         suggestions.put("contentSuggestions", generateContentSuggestions(resumeText, hasEmail, hasPhone, hasLinks));
+        suggestions.put("fallbackActive", true);
+        suggestions.put("fallbackReason", "Gemini API rate limit or quota exceeded");
 
         return suggestions;
     }
@@ -133,7 +141,7 @@ public class AIService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> callGeminiAPI(String resume, String jd, int score, List<String> missingKeywords) {
         try {
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiModel + ":generateContent?key=" + geminiApiKey;
             
             String systemInstructions = "You are an ATS (Applicant Tracking System) expert. Analyze this resume against the job description. " +
                 "Provide suggestions in strict JSON format. You MUST return ONLY a JSON object and no markdown formatting or triple backticks. The JSON object structure MUST be: " +
@@ -159,7 +167,7 @@ public class AIService {
             generationConfig.put("responseMimeType", "application/json");
             payload.put("generationConfig", generationConfig);
 
-            Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
+            Map<String, Object> response = postWithRetry(url, payload);
             
             if (response != null && response.containsKey("candidates")) {
                 List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.get("candidates");
@@ -174,7 +182,8 @@ public class AIService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Failed to fetch response from Gemini API: " + e.getMessage() + ". Using local rules.");
+            System.err.println("Failed to fetch response from Gemini API: " + e.getMessage());
+            throw new RuntimeException(e);
         }
         
         // Local rules fallback
@@ -183,6 +192,8 @@ public class AIService {
         suggestions.put("formattingSuggestions", generateFormattingSuggestions(Collections.emptyList(), resume.length()));
         suggestions.put("keywordSuggestions", generateKeywordSuggestions(missingKeywords));
         suggestions.put("contentSuggestions", generateContentSuggestions(resume, true, true, true));
+        suggestions.put("fallbackActive", true);
+        suggestions.put("fallbackReason", "Invalid response structure from Gemini API");
         return suggestions;
     }
 
@@ -200,7 +211,7 @@ public class AIService {
     @SuppressWarnings("unchecked")
     private String callGeminiAPIForBulletPoint(String bulletPoint) {
         try {
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiModel + ":generateContent?key=" + geminiApiKey;
             
             String systemInstructions = "You are a professional resume writer and ATS optimization expert. Rewrite the following resume achievement to start with a strong action verb and include a clear, quantified impact, metric, or outcome. " +
                 "Provide the response in strict JSON format. You MUST return ONLY a JSON object and no markdown formatting or triple backticks. The JSON object structure MUST be: " +
@@ -219,7 +230,7 @@ public class AIService {
             generationConfig.put("responseMimeType", "application/json");
             payload.put("generationConfig", generationConfig);
 
-            Map<String, Object> response = restTemplate.postForObject(url, payload, Map.class);
+            Map<String, Object> response = postWithRetry(url, payload);
             
             if (response != null && response.containsKey("candidates")) {
                 List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.get("candidates");
@@ -275,5 +286,29 @@ public class AIService {
         }
         
         return rewritten;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> postWithRetry(String url, Map<String, Object> payload) throws Exception {
+        int maxRetries = 3;
+        int delayMs = 2000;
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return restTemplate.postForObject(url, payload, Map.class);
+            } catch (Exception e) {
+                String errorMsg = e.getMessage() != null ? e.getMessage() : "";
+                if (errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED") || errorMsg.contains("Too Many Requests")) {
+                    System.err.println("Rate limit (429) hit on Gemini API, attempt " + attempt + " of " + maxRetries + ". Retrying after delay...");
+                    if (attempt == maxRetries) {
+                        throw e;
+                    }
+                    Thread.sleep(delayMs * attempt);
+                } else {
+                    throw e;
+                }
+            }
+        }
+        throw new RuntimeException("Request failed after max retries");
     }
 }

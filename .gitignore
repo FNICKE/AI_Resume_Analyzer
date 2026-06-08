@@ -27,3 +27,4 @@ resume-analyzer-frontend/local.properties
 Thumbs.db
 .env.local
 .env.*.local
+.env

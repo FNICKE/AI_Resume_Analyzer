@@ -1,1055 +1,80 @@
 import React, { useState, useEffect } from 'react'
 
-function BuilderView({ apiUrl, currentUser }) {
-  const [activeStep, setActiveStep] = useState(0)
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveStatus, setSaveStatus] = useState('')
-  const [jdText, setJdText] = useState('')
-  const [jdAnalysis, setJdAnalysis] = useState(null)
-  
-  // State for the bullet point currently being optimized by AI
-  const [optimizingIndex, setOptimizingIndex] = useState(null) // { section: 'experience'|'projects', itemIndex: number, bulletIndex: number }
-  const [optimizeError, setOptimizeError] = useState('')
-
-  // Resume builder form state
-  const [resumeData, setResumeData] = useState({
-    personal: {
-      fullName: '',
-      title: '',
-      email: '',
-      phone: '',
-      location: '',
-      website: '',
-      linkedin: '',
-      github: ''
-    },
-    summary: '',
-    experience: [],
-    projects: [],
-    education: [],
-    skills: {
-      languages: '',
-      frameworks: '',
-      databases: '',
-      tools: ''
-    }
-  })
-
-  // Load draft from DB on mount
-  useEffect(() => {
-    fetchDraft()
-  }, [currentUser])
-
-  const fetchDraft = async () => {
-    if (!currentUser) return
-    try {
-      const response = await fetch(`${apiUrl}/api/drafts?userId=${currentUser.id}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data && data.contentJson) {
-          try {
-            const parsed = JSON.parse(data.contentJson)
-            // Merge loaded data with default empty state to ensure no missing fields
-            setResumeData({
-              personal: { ...defaultDraft.personal, ...parsed.personal },
-              summary: parsed.summary || '',
-              experience: parsed.experience || [],
-              projects: parsed.projects || [],
-              education: parsed.education || [],
-              skills: { ...defaultDraft.skills, ...parsed.skills }
-            })
-            setSaveStatus(`Loaded saved draft from ${new Date(data.updatedAt).toLocaleTimeString()}`)
-          } catch (e) {
-            console.error("Failed to parse saved draft JSON", e)
-            loadDefaultTemplate()
-          }
-        } else {
-          loadDefaultTemplate()
-        }
-      } else {
-        loadDefaultTemplate()
-      }
-    } catch (error) {
-      console.error("Failed to fetch draft", error)
-      loadDefaultTemplate()
-    }
-  }
-
-  const loadDefaultTemplate = () => {
-    setResumeData(JSON.parse(JSON.stringify(defaultDraft)))
-    setSaveStatus('Loaded standard template (no saved draft found)')
-  }
-
-  // Auto-save draft every 30 seconds if changed
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      saveDraft(true)
-    }, 30000)
-    return () => clearTimeout(timer)
-  }, [resumeData])
-
-  const saveDraft = async (isAuto = false) => {
-    if (!currentUser) return
-    if (isSaving) return
-    
-    setIsSaving(true)
-    if (!isAuto) setSaveStatus('Saving draft...')
-    
-    try {
-      const response = await fetch(`${apiUrl}/api/drafts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          templateName: 'ATS_Standard_Single_Column',
-          contentJson: JSON.stringify(resumeData)
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSaveStatus(`${isAuto ? 'Auto-saved' : 'Saved'} draft at ${new Date().toLocaleTimeString()}`)
-      } else {
-        setSaveStatus('Failed to save draft')
-      }
-    } catch (error) {
-      console.error("Save draft error", error)
-      setSaveStatus('Error connecting to backend to save')
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  // Handle personal info changes
-  const handlePersonalChange = (field, val) => {
-    setResumeData(prev => ({
-      ...prev,
-      personal: {
-        ...prev.personal,
-        [field]: val
-      }
-    }))
-  }
-
-  // Handle skills changes
-  const handleSkillsChange = (category, val) => {
-    setResumeData(prev => ({
-      ...prev,
-      skills: {
-        ...prev.skills,
-        [category]: val
-      }
-    }))
-  }
-
-  // Generic dynamic array helpers
-  const addItem = (section, template) => {
-    setResumeData(prev => ({
-      ...prev,
-      [section]: [...prev[section], template]
-    }))
-  }
-
-  const removeItem = (section, index) => {
-    setResumeData(prev => ({
-      ...prev,
-      [section]: prev[section].filter((_, i) => i !== index)
-    }))
-  }
-
-  const updateItem = (section, index, field, val) => {
-    setResumeData(prev => {
-      const items = [...prev[section]]
-      items[index] = { ...items[index], [field]: val }
-      return { ...prev, [section]: items }
-    })
-  }
-
-  // Bullet point list helpers for Experience and Projects
-  const addBullet = (section, itemIndex) => {
-    setResumeData(prev => {
-      const items = [...prev[section]]
-      items[itemIndex] = {
-        ...items[itemIndex],
-        bullets: [...(items[itemIndex].bullets || []), '']
-      }
-      return { ...prev, [section]: items }
-    })
-  }
-
-  const removeBullet = (section, itemIndex, bulletIndex) => {
-    setResumeData(prev => {
-      const items = [...prev[section]]
-      items[itemIndex] = {
-        ...items[itemIndex],
-        bullets: items[itemIndex].bullets.filter((_, i) => i !== bulletIndex)
-      }
-      return { ...prev, [section]: items }
-    })
-  }
-
-  const updateBullet = (section, itemIndex, bulletIndex, val) => {
-    setResumeData(prev => {
-      const items = [...prev[section]]
-      const bullets = [...items[itemIndex].bullets]
-      bullets[bulletIndex] = val
-      items[itemIndex] = { ...items[itemIndex], bullets }
-      return { ...prev, [section]: items }
-    })
-  }
-
-  // Call API to optimize bullet point
-  const optimizeBullet = async (section, itemIndex, bulletIndex) => {
-    const currentBullet = resumeData[section][itemIndex].bullets[bulletIndex]
-    if (!currentBullet || !currentBullet.trim()) {
-      setOptimizeError('Bullet point text is empty')
-      return
-    }
-
-    setOptimizingIndex({ section, itemIndex, bulletIndex })
-    setOptimizeError('')
-
-    try {
-      const response = await fetch(`${apiUrl}/api/drafts/improve-bullet`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ bulletPoint: currentBullet })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data && data.improved) {
-          updateBullet(section, itemIndex, bulletIndex, data.improved)
-        }
-      } else {
-        setOptimizeError('Failed to optimize bullet point')
-      }
-    } catch (e) {
-      console.error(e)
-      setOptimizeError('Error communicating with AI service')
-    } finally {
-      setOptimizingIndex(null)
-    }
-  }
-
-  // Job Description Keyword Matching Analyzer
-  const analyzeJobDescription = () => {
-    if (!jdText.trim()) {
-      alert('Please paste a job description first.')
-      return
-    }
-
-    // Common technical term lists to parse
-    const techKeywords = [
-      'react', 'next.js', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'sass', 'tailwind',
-      'java', 'spring boot', 'python', 'django', 'flask', 'fastapi', 'go', 'golang', 'rust', 'c++', 'c#', '.net',
-      'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch', 'cassandra', 'oracle', 'sql', 'nosql',
-      'docker', 'kubernetes', 'aws', 'amazon web services', 'azure', 'gcp', 'google cloud', 'ci/cd', 'jenkins',
-      'github actions', 'git', 'maven', 'gradle', 'graphql', 'rest api', 'microservices', 'serverless',
-      'agile', 'scrum', 'jira', 'pytest', 'junit', 'mockito', 'selenium', 'machine learning', 'ai', 'data science',
-      'nlp', 'devops', 'terraform', 'ansible', 'prometheus', 'grafana', 'webpack', 'vite', 'node.js', 'express'
-    ]
-
-    const lowerJd = jdText.toLowerCase()
-    
-    // Combine all fields of resume text to search for matching terms
-    const allResumeText = [
-      resumeData.summary,
-      resumeData.skills.languages,
-      resumeData.skills.frameworks,
-      resumeData.skills.databases,
-      resumeData.skills.tools,
-      ...resumeData.experience.map(e => `${e.company} ${e.role} ${(e.bullets || []).join(' ')}`),
-      ...resumeData.projects.map(p => `${p.name} ${p.tech} ${(p.bullets || []).join(' ')}`),
-      ...resumeData.education.map(ed => `${ed.institution} ${ed.degree} ${ed.major}`)
-    ].join(' ').toLowerCase()
-
-    const matched = []
-    const missing = []
-
-    techKeywords.forEach(kw => {
-      // Check if keyword is in the Job Description
-      const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i')
-      if (regex.test(lowerJd)) {
-        if (allResumeText.includes(kw)) {
-          matched.push(kw)
-        } else {
-          missing.push(kw)
-        }
-      }
-    })
-
-    setJdAnalysis({ matched, missing })
-  }
-
-  // Automatically inject a missing keyword to Skills section
-  const autoInjectKeyword = (keyword) => {
-    // Attempt to inject skill into matching categories
-    const lowerKw = keyword.toLowerCase()
-    let category = 'tools' // default fallback
-
-    const langRegex = /java|javascript|typescript|python|go|golang|rust|c\+\+|c#|sql/i
-    const dbRegex = /postgresql|mysql|mongodb|redis|elasticsearch|cassandra|oracle|nosql/i
-    const frameworkRegex = /spring boot|react|next|vue|angular|django|flask|fastapi|node|express/i
-
-    if (langRegex.test(lowerKw)) category = 'languages'
-    else if (dbRegex.test(lowerKw)) category = 'databases'
-    else if (frameworkRegex.test(lowerKw)) category = 'frameworks'
-
-    const currentVal = resumeData.skills[category]
-    const newVal = currentVal ? `${currentVal}, ${keyword}` : keyword
-    
-    handleSkillsChange(category, newVal)
-
-    // Remove from missing and add to matched in current local analysis view
-    if (jdAnalysis) {
-      setJdAnalysis(prev => ({
-        matched: [...prev.matched, keyword],
-        missing: prev.missing.filter(k => k !== keyword)
-      }))
-    }
-  }
-
-  // Print function
-  const triggerPrint = () => {
-    window.print()
-  }
-
-  const steps = [
-    { title: 'Personal Info', description: 'Contact & online profiles' },
-    { title: 'Summary', description: 'ATS professional overview' },
-    { title: 'Experience', description: 'Quantified work history' },
-    { title: 'Projects', description: 'Key technical achievements' },
-    { title: 'Education', description: 'Academic records' },
-    { title: 'Skills', description: 'Categorized technical skills' }
-  ]
-
-  return (
-    <div className="builder-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', height: 'calc(100vh - 40px)', padding: '1rem', overflow: 'hidden' }}>
-      
-      {/* LEFT: Builder Panel (Forms & AI Toolkit) */}
-      <div className="builder-control-panel card-glass" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', padding: '1.5rem' }}>
-        
-        {/* Header & Status */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <div>
-            <h2 className="gradient-text" style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Resume Builder</h2>
-            <p className="subtitle" style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '0.25rem' }}>Construct a single-column, 80-90+ score ATS resume</p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button onClick={() => saveDraft(false)} disabled={isSaving} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-              {isSaving ? 'Saving...' : 'Save Draft'}
-            </button>
-            <button onClick={triggerPrint} className="btn btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2m-12 0v5h12v-5" />
-              </svg>
-              Print / Export PDF
-            </button>
-          </div>
-        </div>
-
-        {saveStatus && (
-          <div style={{ fontSize: '0.8rem', color: '#38bdf8', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div className="pulse-dot" style={{ width: '6px', height: '6px', backgroundColor: '#38bdf8', borderRadius: '50%' }}></div>
-            {saveStatus}
-          </div>
-        )}
-
-        {/* Form Wizard Navigation Header */}
-        <div className="wizard-nav" style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '1.5rem', scrollbarWidth: 'none' }}>
-          {steps.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => setActiveStep(idx)}
-              style={{
-                background: activeStep === idx ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                border: '1px solid',
-                borderColor: activeStep === idx ? '#6366f1' : 'rgba(255, 255, 255, 0.1)',
-                color: activeStep === idx ? '#818cf8' : '#94a3b8',
-                borderRadius: '8px',
-                padding: '0.5rem 1rem',
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s ease',
-                flexShrink: 0
-              }}
-            >
-              Step {idx + 1}: {s.title}
-            </button>
-          ))}
-        </div>
-
-        {/* Wizard Form Panels */}
-        <div className="wizard-content" style={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', paddingRight: '0.5rem', marginBottom: '1.5rem' }}>
-          
-          {/* STEP 1: Personal Info */}
-          {activeStep === 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>Contact Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="input-group">
-                  <label>Full Name</label>
-                  <input type="text" value={resumeData.personal.fullName} onChange={(e) => handlePersonalChange('fullName', e.target.value)} placeholder="e.g. John Doe" />
-                </div>
-                <div className="input-group">
-                  <label>Professional Title</label>
-                  <input type="text" value={resumeData.personal.title} onChange={(e) => handlePersonalChange('title', e.target.value)} placeholder="e.g. Senior Backend Engineer" />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="input-group">
-                  <label>Email Address</label>
-                  <input type="email" value={resumeData.personal.email} onChange={(e) => handlePersonalChange('email', e.target.value)} placeholder="e.g. email@example.com" />
-                </div>
-                <div className="input-group">
-                  <label>Phone Number</label>
-                  <input type="text" value={resumeData.personal.phone} onChange={(e) => handlePersonalChange('phone', e.target.value)} placeholder="e.g. +1 (555) 123-4567" />
-                </div>
-              </div>
-              <div className="input-group">
-                <label>Location</label>
-                <input type="text" value={resumeData.personal.location} onChange={(e) => handlePersonalChange('location', e.target.value)} placeholder="e.g. San Francisco, CA" />
-              </div>
-              
-              <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem', marginTop: '1rem' }}>Links & Websites</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                <div className="input-group">
-                  <label>Portfolio/Website</label>
-                  <input type="text" value={resumeData.personal.website} onChange={(e) => handlePersonalChange('website', e.target.value)} placeholder="e.g. johndoe.dev" />
-                </div>
-                <div className="input-group">
-                  <label>LinkedIn Link</label>
-                  <input type="text" value={resumeData.personal.linkedin} onChange={(e) => handlePersonalChange('linkedin', e.target.value)} placeholder="e.g. linkedin.com/in/johndoe" />
-                </div>
-                <div className="input-group">
-                  <label>GitHub Link</label>
-                  <input type="text" value={resumeData.personal.github} onChange={(e) => handlePersonalChange('github', e.target.value)} placeholder="e.g. github.com/johndoe" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Summary */}
-          {activeStep === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="input-group">
-                <label>Professional Summary</label>
-                <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                  Write a concise 3-4 sentence paragraph highlighting your core competencies, technical specialties, and major impacts. Avoid fluff.
-                </p>
-                <textarea
-                  rows="6"
-                  value={resumeData.summary}
-                  onChange={(e) => setResumeData(prev => ({ ...prev, summary: e.target.value }))}
-                  placeholder="e.g. Senior Software Engineer with 5+ years of experience designing high-performance REST APIs..."
-                />
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: Experience */}
-          {activeStep === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>Work Experience</h3>
-                <button
-                  type="button"
-                  onClick={() => addItem('experience', { company: '', role: '', dates: '', location: '', bullets: [''] })}
-                  className="btn btn-secondary"
-                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderColor: '#818cf8', color: '#818cf8' }}
-                >
-                  + Add Experience
-                </button>
-              </div>
-
-              {resumeData.experience.map((exp, idx) => (
-                <div key={idx} style={{ padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', position: 'relative' }}>
-                  <button
-                    onClick={() => removeItem('experience', idx)}
-                    style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
-                  >
-                    Delete Entry
-                  </button>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', marginTop: '0.5rem' }}>
-                    <div className="input-group">
-                      <label>Company Name</label>
-                      <input type="text" value={exp.company} onChange={(e) => updateItem('experience', idx, 'company', e.target.value)} placeholder="e.g. Acme Corporation" />
-                    </div>
-                    <div className="input-group">
-                      <label>Job Title</label>
-                      <input type="text" value={exp.role} onChange={(e) => updateItem('experience', idx, 'role', e.target.value)} placeholder="e.g. Software Engineer" />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div className="input-group">
-                      <label>Dates Worked</label>
-                      <input type="text" value={exp.dates} onChange={(e) => updateItem('experience', idx, 'dates', e.target.value)} placeholder="e.g. Jan 2022 - Present" />
-                    </div>
-                    <div className="input-group">
-                      <label>Location</label>
-                      <input type="text" value={exp.location} onChange={(e) => updateItem('experience', idx, 'location', e.target.value)} placeholder="e.g. New York, NY (Remote)" />
-                    </div>
-                  </div>
-
-                  {/* Bullet points */}
-                  <div style={{ marginTop: '1rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#e2e8f0' }}>Key Achievements (Bullet Points)</label>
-                      <button
-                        type="button"
-                        onClick={() => addBullet('experience', idx)}
-                        style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.75rem' }}
-                      >
-                        + Add Bullet
-                      </button>
-                    </div>
-
-                    {(exp.bullets || []).map((bullet, bIdx) => {
-                      const isOptimizing = optimizingIndex && 
-                                           optimizingIndex.section === 'experience' && 
-                                           optimizingIndex.itemIndex === idx && 
-                                           optimizingIndex.bulletIndex === bIdx
-
-                      return (
-                        <div key={bIdx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                          <span style={{ color: '#94a3b8', marginTop: '0.5rem', fontSize: '0.9rem' }}>•</span>
-                          <textarea
-                            rows="2"
-                            style={{ flexGrow: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-                            value={bullet}
-                            onChange={(e) => updateBullet('experience', idx, bIdx, e.target.value)}
-                            placeholder="Describe achievement starting with an action verb (e.g. Optimized DB index structure...)"
-                          />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <button
-                              type="button"
-                              onClick={() => optimizeBullet('experience', idx, bIdx)}
-                              disabled={isOptimizing}
-                              className="btn btn-secondary"
-                              style={{ 
-                                padding: '0.25rem 0.5rem', 
-                                fontSize: '0.7rem', 
-                                backgroundColor: isOptimizing ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
-                                borderColor: '#38bdf8',
-                                color: '#38bdf8',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {isOptimizing ? 'AI Running...' : 'AI Optimize'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeBullet('experience', idx, bIdx)}
-                              style={{ 
-                                border: '1px solid rgba(239, 68, 68, 0.4)', 
-                                background: 'transparent',
-                                color: '#ef4444',
-                                borderRadius: '4px',
-                                padding: '0.25rem 0.5rem',
-                                cursor: 'pointer',
-                                fontSize: '0.7rem' 
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {optimizeError && (
-                      <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.25rem' }}>{optimizeError}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* STEP 4: Projects */}
-          {activeStep === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>Projects</h3>
-                <button
-                  type="button"
-                  onClick={() => addItem('projects', { name: '', role: '', tech: '', bullets: [''] })}
-                  className="btn btn-secondary"
-                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderColor: '#818cf8', color: '#818cf8' }}
-                >
-                  + Add Project
-                </button>
-              </div>
-
-              {resumeData.projects.map((proj, idx) => (
-                <div key={idx} style={{ padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', position: 'relative' }}>
-                  <button
-                    onClick={() => removeItem('projects', idx)}
-                    style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
-                  >
-                    Delete Entry
-                  </button>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', marginTop: '0.5rem' }}>
-                    <div className="input-group">
-                      <label>Project Name</label>
-                      <input type="text" value={proj.name} onChange={(e) => updateItem('projects', idx, 'name', e.target.value)} placeholder="e.g. AI Resume Parser" />
-                    </div>
-                    <div className="input-group">
-                      <label>Project Role</label>
-                      <input type="text" value={proj.role} onChange={(e) => updateItem('projects', idx, 'role', e.target.value)} placeholder="e.g. Lead Developer / Creator" />
-                    </div>
-                  </div>
-
-                  <div className="input-group" style={{ marginBottom: '1rem' }}>
-                    <label>Technologies Used (Comma-separated)</label>
-                    <input type="text" value={proj.tech} onChange={(e) => updateItem('projects', idx, 'tech', e.target.value)} placeholder="e.g. Spring Boot, React.js, PostgreSQL" />
-                  </div>
-
-                  {/* Bullet points */}
-                  <div style={{ marginTop: '1rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#e2e8f0' }}>Key Features & Impact</label>
-                      <button
-                        type="button"
-                        onClick={() => addBullet('projects', idx)}
-                        style={{ background: 'none', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.75rem' }}
-                      >
-                        + Add Bullet
-                      </button>
-                    </div>
-
-                    {(proj.bullets || []).map((bullet, bIdx) => {
-                      const isOptimizing = optimizingIndex && 
-                                           optimizingIndex.section === 'projects' && 
-                                           optimizingIndex.itemIndex === idx && 
-                                           optimizingIndex.bulletIndex === bIdx
-
-                      return (
-                        <div key={bIdx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                          <span style={{ color: '#94a3b8', marginTop: '0.5rem', fontSize: '0.9rem' }}>•</span>
-                          <textarea
-                            rows="2"
-                            style={{ flexGrow: 1, padding: '0.5rem', fontSize: '0.85rem' }}
-                            value={bullet}
-                            onChange={(e) => updateBullet('projects', idx, bIdx, e.target.value)}
-                            placeholder="Describe project contribution (e.g. Built microservice pipeline...)"
-                          />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <button
-                              type="button"
-                              onClick={() => optimizeBullet('projects', idx, bIdx)}
-                              disabled={isOptimizing}
-                              className="btn btn-secondary"
-                              style={{ 
-                                padding: '0.25rem 0.5rem', 
-                                fontSize: '0.7rem', 
-                                backgroundColor: isOptimizing ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
-                                borderColor: '#38bdf8',
-                                color: '#38bdf8',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {isOptimizing ? 'AI Running...' : 'AI Optimize'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeBullet('projects', idx, bIdx)}
-                              style={{ 
-                                border: '1px solid rgba(239, 68, 68, 0.4)', 
-                                background: 'transparent',
-                                color: '#ef4444',
-                                borderRadius: '4px',
-                                padding: '0.25rem 0.5rem',
-                                cursor: 'pointer',
-                                fontSize: '0.7rem' 
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* STEP 5: Education */}
-          {activeStep === 4 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', margin: 0 }}>Education</h3>
-                <button
-                  type="button"
-                  onClick={() => addItem('education', { institution: '', degree: '', major: '', dates: '', gpa: '' })}
-                  className="btn btn-secondary"
-                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem', borderColor: '#818cf8', color: '#818cf8' }}
-                >
-                  + Add Education
-                </button>
-              </div>
-
-              {resumeData.education.map((edu, idx) => (
-                <div key={idx} style={{ padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', position: 'relative' }}>
-                  <button
-                    onClick={() => removeItem('education', idx)}
-                    style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
-                  >
-                    Delete Entry
-                  </button>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', marginTop: '0.5rem' }}>
-                    <div className="input-group">
-                      <label>Institution Name</label>
-                      <input type="text" value={edu.institution} onChange={(e) => updateItem('education', idx, 'institution', e.target.value)} placeholder="e.g. Stanford University" />
-                    </div>
-                    <div className="input-group">
-                      <label>Degree</label>
-                      <input type="text" value={edu.degree} onChange={(e) => updateItem('education', idx, 'degree', e.target.value)} placeholder="e.g. M.S. or B.S." />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-                    <div className="input-group">
-                      <label>Field of Study (Major)</label>
-                      <input type="text" value={edu.major} onChange={(e) => updateItem('education', idx, 'major', e.target.value)} placeholder="e.g. Computer Science" />
-                    </div>
-                    <div className="input-group">
-                      <label>Graduation Date</label>
-                      <input type="text" value={edu.dates} onChange={(e) => updateItem('education', idx, 'dates', e.target.value)} placeholder="e.g. May 2021" />
-                    </div>
-                    <div className="input-group">
-                      <label>GPA / Scale</label>
-                      <input type="text" value={edu.gpa} onChange={(e) => updateItem('education', idx, 'gpa', e.target.value)} placeholder="e.g. 3.9/4.0" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* STEP 6: Skills */}
-          {activeStep === 5 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <h3 style={{ fontSize: '1.1rem', color: '#e2e8f0', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.5rem' }}>Technical Skills</h3>
-              <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Categorize your skills. Separate keywords with commas so ATS parsers match them quickly.</p>
-              
-              <div className="input-group">
-                <label>Programming Languages</label>
-                <input type="text" value={resumeData.skills.languages} onChange={(e) => handleSkillsChange('languages', e.target.value)} placeholder="e.g. Java, JavaScript, Python, SQL" />
-              </div>
-              <div className="input-group">
-                <label>Frameworks & Libraries</label>
-                <input type="text" value={resumeData.skills.frameworks} onChange={(e) => handleSkillsChange('frameworks', e.target.value)} placeholder="e.g. React.js, Spring Boot, Node.js" />
-              </div>
-              <div className="input-group">
-                <label>Databases & Cloud Storage</label>
-                <input type="text" value={resumeData.skills.databases} onChange={(e) => handleSkillsChange('databases', e.target.value)} placeholder="e.g. PostgreSQL, Redis, DynamoDB" />
-              </div>
-              <div className="input-group">
-                <label>Developer Tools & Infrastructure</label>
-                <input type="text" value={resumeData.skills.tools} onChange={(e) => handleSkillsChange('tools', e.target.value)} placeholder="e.g. Docker, Git, AWS, CI/CD, Kubernetes" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Prev / Next Wizards Nav */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTops: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button
-            onClick={() => setActiveStep(prev => Math.max(0, prev - 1))}
-            disabled={activeStep === 0}
-            className="btn btn-secondary"
-            style={{ padding: '0.5rem 1rem' }}
-          >
-            ← Previous Step
-          </button>
-          
-          {activeStep < steps.length - 1 ? (
-            <button
-              onClick={() => setActiveStep(prev => Math.min(steps.length - 1, prev + 1))}
-              className="btn btn-primary"
-              style={{ padding: '0.5rem 1.25rem' }}
-            >
-              Next Step →
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                saveDraft(false)
-                alert('Draft saved successfully to dashboard database!')
-              }}
-              className="btn btn-primary"
-              style={{ padding: '0.5rem 1.25rem', backgroundColor: '#10b981', borderColor: '#10b981' }}
-            >
-              Save & Finalize Draft
-            </button>
-          )}
-        </div>
-
-        {/* AI TOOLKIT SECTION: JD Keywords Matcher */}
-        <div className="card-glass" style={{ border: '1px dashed rgba(99, 102, 241, 0.4)', borderRadius: '8px', padding: '1rem', marginTop: '2rem', backgroundColor: 'rgba(99, 102, 241, 0.02)' }}>
-          <h3 style={{ fontSize: '1rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.5rem 0' }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <path d="M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H10.82a2 2 0 0 1-1.99-1.819l-.637-7A2 2 0 0 1 9.828 3zM12 18v.01" />
-            </svg>
-            AI JD Keywords Matcher (ATS Optimizer)
-          </h3>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem' }}>
-            Paste the target Job Description to automatically detect missing tech stack keywords and inject them.
-          </p>
-          <textarea
-            rows="3"
-            value={jdText}
-            onChange={(e) => setJdText(e.target.value)}
-            placeholder="Paste Job Description here..."
-            style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem', marginBottom: '0.75rem', borderRadius: '6px' }}
-          />
-          <button
-            onClick={analyzeJobDescription}
-            className="btn btn-secondary"
-            style={{ width: '100%', fontSize: '0.8rem', padding: '0.4rem', borderColor: '#6366f1', color: '#818cf8' }}
-          >
-            Compare & Optimize Keywords
-          </button>
-
-          {/* Keywords Match Display */}
-          {jdAnalysis && (
-            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div>
-                <h4 style={{ fontSize: '0.8rem', color: '#10b981', margin: '0 0 0.25rem 0' }}>Matched Keywords ({jdAnalysis.matched.length})</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  {jdAnalysis.matched.map((kw, i) => (
-                    <span key={i} style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#34d399', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                      ✓ {kw}
-                    </span>
-                  ))}
-                  {jdAnalysis.matched.length === 0 && <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>None matched.</span>}
-                </div>
-              </div>
-              <div>
-                <h4 style={{ fontSize: '0.8rem', color: '#ef4444', margin: '0 0 0.25rem 0' }}>Missing Tech Keywords ({jdAnalysis.missing.length})</h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  {jdAnalysis.missing.map((kw, i) => (
-                    <button
-                      key={i}
-                      onClick={() => autoInjectKeyword(kw)}
-                      title="Click to auto-inject into skills list"
-                      style={{
-                        fontSize: '0.7rem',
-                        padding: '0.15rem 0.4rem',
-                        backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                        color: '#f87171',
-                        borderRadius: '4px',
-                        border: '1px dashed rgba(239, 68, 68, 0.4)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.15rem'
-                      }}
-                    >
-                      + {kw}
-                    </button>
-                  ))}
-                  {jdAnalysis.missing.length === 0 && <span style={{ fontSize: '0.7rem', color: '#34d399' }}>Excellent! All relevant tech keywords are present!</span>}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {/* RIGHT: Live ATS-Compliant Document Preview */}
-      <div className="preview-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-          <h3 style={{ fontSize: '1rem', color: '#cbd5e1', margin: 0 }}>ATS-Compliant Live Preview</h3>
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Auto-formats to 1-column page</span>
-        </div>
-
-        {/* Paper Sheet Preview container */}
-        <div 
-          style={{ 
-            flexGrow: 1, 
-            overflowY: 'auto', 
-            backgroundColor: '#0f172a', 
-            border: '1px solid rgba(255,255,255,0.05)', 
-            borderRadius: '8px', 
-            padding: '1.5rem',
-            display: 'flex',
-            justifyContent: 'center'
-          }}
-        >
-          {/* Printable container */}
-          <div 
-            id="ats-resume-print-area" 
-            className="resume-paper"
-            style={{
-              width: '100%',
-              maxWidth: '800px',
-              minHeight: '1000px',
-              backgroundColor: '#ffffff',
-              color: '#1e293b',
-              padding: '2.5rem',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-              fontFamily: 'system-ui, -apple-system, sans-serif',
-              fontSize: '11pt',
-              lineHeight: '1.4',
-              boxSizing: 'border-box'
-            }}
-          >
-            {/* Header / Contact Details */}
-            <div style={{ textAlign: 'center', borderBottom: '2px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
-              <h1 style={{ fontSize: '24pt', fontWeight: 'bold', margin: '0 0 0.25rem 0', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {resumeData.personal.fullName || 'YOUR NAME'}
-              </h1>
-              <div style={{ fontSize: '11pt', fontWeight: '500', color: '#475569', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-                {resumeData.personal.title || 'Professional Title'}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem 1rem', fontSize: '9.5pt', color: '#475569' }}>
-                {resumeData.personal.email && (
-                  <span style={{ display: 'flex', alignItems: 'center' }}>
-                    {resumeData.personal.email}
-                  </span>
-                )}
-                {resumeData.personal.phone && <span>| {resumeData.personal.phone}</span>}
-                {resumeData.personal.location && <span>| {resumeData.personal.location}</span>}
-                {resumeData.personal.website && <span>| {resumeData.personal.website}</span>}
-                {resumeData.personal.linkedin && <span>| {resumeData.personal.linkedin}</span>}
-                {resumeData.personal.github && <span>| {resumeData.personal.github}</span>}
-              </div>
-            </div>
-
-            {/* Summary */}
-            {resumeData.summary && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '6px', letterSpacing: '0.5px' }}>
-                  Professional Summary
-                </h3>
-                <p style={{ fontSize: '10pt', margin: 0, color: '#334155', textAlign: 'justify' }}>
-                  {resumeData.summary}
-                </p>
-              </div>
-            )}
-
-            {/* Experience */}
-            {resumeData.experience && resumeData.experience.length > 0 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  Professional Experience
-                </h3>
-                {resumeData.experience.map((exp, idx) => (
-                  <div key={idx} style={{ marginBottom: idx === resumeData.experience.length - 1 ? 0 : '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10.5pt', color: '#0f172a' }}>
-                      <span>{exp.company}</span>
-                      <span>{exp.dates}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontStyle: 'italic', fontSize: '9.5pt', color: '#475569', marginBottom: '4px' }}>
-                      <span>{exp.role}</span>
-                      <span>{exp.location}</span>
-                    </div>
-                    {exp.bullets && exp.bullets.length > 0 && (
-                      <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '9.5pt', color: '#334155' }}>
-                        {exp.bullets.map((bullet, bIdx) => bullet.trim() && (
-                          <li key={bIdx} style={{ marginBottom: '3px', textAlign: 'justify' }}>{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Projects */}
-            {resumeData.projects && resumeData.projects.length > 0 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  Projects & Technical Work
-                </h3>
-                {resumeData.projects.map((proj, idx) => (
-                  <div key={idx} style={{ marginBottom: idx === resumeData.projects.length - 1 ? 0 : '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10.5pt', color: '#0f172a' }}>
-                      <span>{proj.name} {proj.role && <span style={{ fontWeight: 'normal', fontStyle: 'italic', color: '#475569' }}>- {proj.role}</span>}</span>
-                      <span style={{ fontSize: '9.5pt', fontWeight: 'normal', color: '#475569', fontStyle: 'italic' }}>{proj.tech}</span>
-                    </div>
-                    {proj.bullets && proj.bullets.length > 0 && (
-                      <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '9.5pt', color: '#334155', marginTop: '3px' }}>
-                        {proj.bullets.map((bullet, bIdx) => bullet.trim() && (
-                          <li key={bIdx} style={{ marginBottom: '3px', textAlign: 'justify' }}>{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Education */}
-            {resumeData.education && resumeData.education.length > 0 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <h3 style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  Education
-                </h3>
-                {resumeData.education.map((edu, idx) => (
-                  <div key={idx} style={{ marginBottom: idx === resumeData.education.length - 1 ? 0 : '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10.5pt', color: '#0f172a' }}>
-                      <span>{edu.institution}</span>
-                      <span>{edu.dates}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5pt', color: '#475569', fontStyle: 'italic' }}>
-                      <span>{edu.degree} in {edu.major} {edu.gpa && <span>(GPA: {edu.gpa})</span>}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Skills */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h3 style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                Technical Skills
-              </h3>
-              <div style={{ fontSize: '9.5pt', lineHeight: '1.5', color: '#334155' }}>
-                {resumeData.skills.languages && (
-                  <div>
-                    <strong>Languages:</strong> {resumeData.skills.languages}
-                  </div>
-                )}
-                {resumeData.skills.frameworks && (
-                  <div>
-                    <strong>Frameworks & Libraries:</strong> {resumeData.skills.frameworks}
-                  </div>
-                )}
-                {resumeData.skills.databases && (
-                  <div>
-                    <strong>Databases & Caching:</strong> {resumeData.skills.databases}
-                  </div>
-                )}
-                {resumeData.skills.tools && (
-                  <div>
-                    <strong>Developer Tools & Infra:</strong> {resumeData.skills.tools}
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-    </div>
-  )
-}
+const UserIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+)
+
+const FileTextIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+)
+
+const BriefcaseIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+  </svg>
+)
+
+const FolderIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+)
+
+const GraduationIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+    <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+  </svg>
+)
+
+const SkillsIcon = () => (
+  <svg style={{width: '16px', height: '16px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+)
+
+const SaveIcon = () => (
+  <svg style={{width: '14px', height: '14px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+    <polyline points="17 21 17 13 7 13 7 21" />
+    <polyline points="7 3 7 8 15 8" />
+  </svg>
+)
+
+const PrinterIcon = () => (
+  <svg style={{width: '14px', height: '14px', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+)
+
+const WandIcon = () => (
+  <svg style={{width: '12px', height: '12px', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 2 22 8.5 22 22 2" />
+  </svg>
+)
+
+const SuccessIcon = () => (
+  <svg style={{width: '14px', height: '14px', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px', color: '#10b981'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+const WarningIcon = () => (
+  <svg style={{width: '14px', height: '14px', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px', color: '#ef4444'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+)
 
 const defaultDraft = {
   personal: {
@@ -1113,6 +138,793 @@ const defaultDraft = {
     databases: 'PostgreSQL, Redis, MongoDB, MySQL',
     tools: 'Git, Docker, AWS, Maven, CI/CD, Linux'
   }
+}
+
+function BuilderView({ apiUrl, currentUser }) {
+  const [activeStep, setActiveStep] = useState(0)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
+  const [jdText, setJdText] = useState('')
+  const [jdAnalysis, setJdAnalysis] = useState(null)
+  const [showPreview, setShowPreview] = useState(false) // for mobile toggle
+  const [optimizingIndex, setOptimizingIndex] = useState(null)
+  const [optimizeError, setOptimizeError] = useState('')
+
+  const [resumeData, setResumeData] = useState({
+    personal: { fullName: '', title: '', email: '', phone: '', location: '', website: '', linkedin: '', github: '' },
+    summary: '',
+    experience: [],
+    projects: [],
+    education: [],
+    skills: { languages: '', frameworks: '', databases: '', tools: '' }
+  })
+
+  useEffect(() => { fetchDraft() }, [currentUser])
+
+  const fetchDraft = async () => {
+    if (!currentUser) return
+    try {
+      const response = await fetch(`${apiUrl}/api/drafts?userId=${currentUser.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data && data.contentJson) {
+          try {
+            const parsed = JSON.parse(data.contentJson)
+            setResumeData({
+              personal: { ...defaultDraft.personal, ...parsed.personal },
+              summary: parsed.summary || '',
+              experience: parsed.experience || [],
+              projects: parsed.projects || [],
+              education: parsed.education || [],
+              skills: { ...defaultDraft.skills, ...parsed.skills }
+            })
+            setSaveStatus(`Loaded saved draft from ${new Date(data.updatedAt).toLocaleTimeString()}`)
+          } catch (e) {
+            loadDefaultTemplate()
+          }
+        } else {
+          loadDefaultTemplate()
+        }
+      } else {
+        loadDefaultTemplate()
+      }
+    } catch (error) {
+      loadDefaultTemplate()
+    }
+  }
+
+  const loadDefaultTemplate = () => {
+    setResumeData(JSON.parse(JSON.stringify(defaultDraft)))
+    setSaveStatus('Loaded standard ATS template')
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => { saveDraft(true) }, 30000)
+    return () => clearTimeout(timer)
+  }, [resumeData])
+
+  const saveDraft = async (isAuto = false) => {
+    if (!currentUser || isSaving) return
+    setIsSaving(true)
+    if (!isAuto) setSaveStatus('Saving...')
+    try {
+      const response = await fetch(`${apiUrl}/api/drafts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          templateName: 'ATS_Standard_Single_Column',
+          contentJson: JSON.stringify(resumeData)
+        })
+      })
+      if (response.ok) {
+        setSaveStatus(`${isAuto ? 'Auto-saved' : 'Saved'} at ${new Date().toLocaleTimeString()}`)
+      } else {
+        setSaveStatus('Failed to save draft')
+      }
+    } catch (error) {
+      setSaveStatus('Error saving (backend offline?)')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handlePersonalChange = (field, val) => {
+    setResumeData(prev => ({ ...prev, personal: { ...prev.personal, [field]: val } }))
+  }
+
+  const handleSkillsChange = (category, val) => {
+    setResumeData(prev => ({ ...prev, skills: { ...prev.skills, [category]: val } }))
+  }
+
+  const addItem = (section, template) => {
+    setResumeData(prev => ({ ...prev, [section]: [...prev[section], template] }))
+  }
+
+  const removeItem = (section, index) => {
+    setResumeData(prev => ({ ...prev, [section]: prev[section].filter((_, i) => i !== index) }))
+  }
+
+  const updateItem = (section, index, field, val) => {
+    setResumeData(prev => {
+      const items = [...prev[section]]
+      items[index] = { ...items[index], [field]: val }
+      return { ...prev, [section]: items }
+    })
+  }
+
+  const addBullet = (section, itemIndex) => {
+    setResumeData(prev => {
+      const items = [...prev[section]]
+      items[itemIndex] = { ...items[itemIndex], bullets: [...(items[itemIndex].bullets || []), ''] }
+      return { ...prev, [section]: items }
+    })
+  }
+
+  const removeBullet = (section, itemIndex, bulletIndex) => {
+    setResumeData(prev => {
+      const items = [...prev[section]]
+      items[itemIndex] = { ...items[itemIndex], bullets: items[itemIndex].bullets.filter((_, i) => i !== bulletIndex) }
+      return { ...prev, [section]: items }
+    })
+  }
+
+  const updateBullet = (section, itemIndex, bulletIndex, val) => {
+    setResumeData(prev => {
+      const items = [...prev[section]]
+      const bullets = [...items[itemIndex].bullets]
+      bullets[bulletIndex] = val
+      items[itemIndex] = { ...items[itemIndex], bullets }
+      return { ...prev, [section]: items }
+    })
+  }
+
+  const optimizeBullet = async (section, itemIndex, bulletIndex) => {
+    const currentBullet = resumeData[section][itemIndex].bullets[bulletIndex]
+    if (!currentBullet?.trim()) { setOptimizeError('Bullet point is empty'); return }
+    setOptimizingIndex({ section, itemIndex, bulletIndex })
+    setOptimizeError('')
+    try {
+      const response = await fetch(`${apiUrl}/api/drafts/improve-bullet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulletPoint: currentBullet })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data?.improved) updateBullet(section, itemIndex, bulletIndex, data.improved)
+      } else {
+        setOptimizeError('AI optimization failed')
+      }
+    } catch (e) {
+      setOptimizeError('Error reaching AI service')
+    } finally {
+      setOptimizingIndex(null)
+    }
+  }
+
+  const analyzeJobDescription = () => {
+    if (!jdText.trim()) { alert('Please paste a job description first.'); return }
+    const techKeywords = [
+      'react', 'next.js', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'sass', 'tailwind',
+      'java', 'spring boot', 'python', 'django', 'flask', 'fastapi', 'go', 'golang', 'rust', 'c++', 'c#', '.net',
+      'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch', 'cassandra', 'oracle', 'sql', 'nosql',
+      'docker', 'kubernetes', 'aws', 'amazon web services', 'azure', 'gcp', 'google cloud', 'ci/cd', 'jenkins',
+      'github actions', 'git', 'maven', 'gradle', 'graphql', 'rest api', 'microservices', 'serverless',
+      'agile', 'scrum', 'jira', 'pytest', 'junit', 'mockito', 'selenium', 'machine learning', 'ai', 'data science',
+      'nlp', 'devops', 'terraform', 'ansible', 'prometheus', 'grafana', 'webpack', 'vite', 'node.js', 'express'
+    ]
+    const lowerJd = jdText.toLowerCase()
+    const allResumeText = [
+      resumeData.summary, resumeData.skills.languages, resumeData.skills.frameworks,
+      resumeData.skills.databases, resumeData.skills.tools,
+      ...resumeData.experience.map(e => `${e.company} ${e.role} ${(e.bullets || []).join(' ')}`),
+      ...resumeData.projects.map(p => `${p.name} ${p.tech} ${(p.bullets || []).join(' ')}`),
+      ...resumeData.education.map(ed => `${ed.institution} ${ed.degree} ${ed.major}`)
+    ].join(' ').toLowerCase()
+    const matched = [], missing = []
+    techKeywords.forEach(kw => {
+      const regex = new RegExp(`\\b${kw.replace('.', '\\.')}\\b`, 'i')
+      if (regex.test(lowerJd)) {
+        if (allResumeText.includes(kw)) matched.push(kw)
+        else missing.push(kw)
+      }
+    })
+    setJdAnalysis({ matched, missing })
+  }
+
+  const autoInjectKeyword = (keyword) => {
+    const lowerKw = keyword.toLowerCase()
+    let category = 'tools'
+    if (/java|javascript|typescript|python|go|golang|rust|c\+\+|c#|sql/i.test(lowerKw)) category = 'languages'
+    else if (/postgresql|mysql|mongodb|redis|elasticsearch|cassandra|oracle|nosql/i.test(lowerKw)) category = 'databases'
+    else if (/spring boot|react|next|vue|angular|django|flask|fastapi|node|express/i.test(lowerKw)) category = 'frameworks'
+    const currentVal = resumeData.skills[category]
+    handleSkillsChange(category, currentVal ? `${currentVal}, ${keyword}` : keyword)
+    if (jdAnalysis) {
+      setJdAnalysis(prev => ({ matched: [...prev.matched, keyword], missing: prev.missing.filter(k => k !== keyword) }))
+    }
+  }
+
+  const steps = [
+    { title: 'Personal', icon: <UserIcon /> },
+    { title: 'Summary', icon: <FileTextIcon /> },
+    { title: 'Experience', icon: <BriefcaseIcon /> },
+    { title: 'Projects', icon: <FolderIcon /> },
+    { title: 'Education', icon: <GraduationIcon /> },
+    { title: 'Skills', icon: <SkillsIcon /> }
+  ]
+
+  // -------- Inline styles --------
+  const sectionCardStyle = {
+    background: '#fff',
+    border: '1px solid #e9ecef',
+    borderRadius: '0.5rem',
+    padding: '0.875rem',
+    marginBottom: '0.875rem',
+    position: 'relative'
+  }
+
+  const sectionTitleStyle = {
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    color: '#111827',
+    marginBottom: '0.75rem',
+    paddingBottom: '0.5rem',
+    borderBottom: '1px solid #e9ecef'
+  }
+
+  const subtleLabel = {
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    color: '#6b7280',
+    display: 'block',
+    marginBottom: '0.3125rem'
+  }
+
+  const textInput = {
+    width: '100%',
+    padding: '0.5rem 0.75rem',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.5rem',
+    fontSize: '0.84rem',
+    fontFamily: 'Inter, sans-serif',
+    color: '#111827',
+    background: '#f9fafb',
+    outline: 'none'
+  }
+
+  const deleteBtn = {
+    position: 'absolute',
+    top: '0.75rem',
+    right: '0.75rem',
+    background: 'none',
+    border: 'none',
+    color: '#ef4444',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+    fontFamily: 'Inter, sans-serif',
+    fontWeight: 600
+  }
+
+  return (
+    <div>
+      {/* ---- Page Header ---- */}
+      <div className="page-header">
+        <div className="page-title">
+          <h1>Resume Builder</h1>
+          <p>Build an 80-90+ ATS-score single-column resume. AI-powered bullet optimizer included.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowPreview(!showPreview)}
+            className="btn btn-secondary"
+            style={{ display: 'none' }}
+            id="preview-toggle-btn"
+          >
+            {showPreview ? '← Edit' : 'Preview →'}
+          </button>
+          <button onClick={() => saveDraft(false)} disabled={isSaving} className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            {isSaving ? 'Saving...' : <><SaveIcon /> Save Draft</>}
+          </button>
+          <button onClick={() => window.print()} className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <PrinterIcon /> Export PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Save status bar */}
+      {saveStatus && (
+        <div style={{ fontSize: '0.78rem', color: '#6366f1', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', background: '#f5f3ff', borderRadius: '0.5rem', border: '1px solid #e0e7ff' }}>
+          <span style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%', display: 'inline-block' }} />
+          {saveStatus}
+        </div>
+      )}
+
+      {/* ---- Builder Grid ---- */}
+      <div className="builder-layout">
+
+        {/* ===== LEFT PANEL: Forms ===== */}
+        <div className="builder-control-panel">
+
+          {/* Step wizard tabs */}
+          <div className="wizard-nav">
+            {steps.map((s, idx) => (
+              <button
+                key={idx}
+                onClick={() => setActiveStep(idx)}
+                className={`wizard-btn ${activeStep === idx ? 'active' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                {s.icon} {s.title}
+              </button>
+            ))}
+          </div>
+
+          {/* STEP 1: Personal Info */}
+          {activeStep === 0 && (
+            <div>
+              <div style={sectionCardStyle}>
+                <h3 style={sectionTitleStyle}>Contact Details</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.875rem' }}>
+                  {[
+                    { field: 'fullName', label: 'Full Name', placeholder: 'John Doe' },
+                    { field: 'title', label: 'Professional Title', placeholder: 'Senior Backend Engineer' },
+                    { field: 'email', label: 'Email Address', placeholder: 'email@example.com' },
+                    { field: 'phone', label: 'Phone Number', placeholder: '+1 (555) 123-4567' },
+                    { field: 'location', label: 'Location', placeholder: 'San Francisco, CA' }
+                  ].map(f => (
+                    <div key={f.field}>
+                      <label style={subtleLabel}>{f.label}</label>
+                      <input
+                        type="text"
+                        value={resumeData.personal[f.field]}
+                        onChange={e => handlePersonalChange(f.field, e.target.value)}
+                        placeholder={f.placeholder}
+                        style={textInput}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={sectionCardStyle}>
+                <h3 style={sectionTitleStyle}>Online Links</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.875rem' }}>
+                  {[
+                    { field: 'website', label: 'Portfolio / Website', placeholder: 'johndoe.dev' },
+                    { field: 'linkedin', label: 'LinkedIn URL', placeholder: 'linkedin.com/in/johndoe' },
+                    { field: 'github', label: 'GitHub URL', placeholder: 'github.com/johndoe' }
+                  ].map(f => (
+                    <div key={f.field}>
+                      <label style={subtleLabel}>{f.label}</label>
+                      <input
+                        type="text"
+                        value={resumeData.personal[f.field]}
+                        onChange={e => handlePersonalChange(f.field, e.target.value)}
+                        placeholder={f.placeholder}
+                        style={textInput}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Summary */}
+          {activeStep === 1 && (
+            <div style={sectionCardStyle}>
+              <h3 style={sectionTitleStyle}>Professional Summary</h3>
+              <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: '0.625rem', lineHeight: '1.5' }}>
+                Write 3–4 sentences highlighting your core competencies, specialties, and major impact. Avoid buzzwords — be specific.
+              </p>
+              <textarea
+                rows={7}
+                value={resumeData.summary}
+                onChange={e => setResumeData(prev => ({ ...prev, summary: e.target.value }))}
+                placeholder="e.g. Senior Software Engineer with 5+ years of experience designing high-performance REST APIs using Spring Boot..."
+                style={{ ...textInput, resize: 'vertical', minHeight: '7rem', lineHeight: '1.6' }}
+              />
+            </div>
+          )}
+
+          {/* STEP 3: Experience */}
+          {activeStep === 2 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Work Experience</h3>
+                <button
+                  onClick={() => addItem('experience', { company: '', role: '', dates: '', location: '', bullets: [''] })}
+                  className="btn btn-secondary btn-sm"
+                  style={{ borderColor: '#6366f1', color: '#6366f1' }}
+                >
+                  + Add
+                </button>
+              </div>
+              {resumeData.experience.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af', fontSize: '0.85rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px dashed #d1d5db' }}>
+                  Click "+ Add" to add your work experience
+                </div>
+              )}
+              {resumeData.experience.map((exp, idx) => (
+                <div key={idx} style={sectionCardStyle}>
+                  <button onClick={() => removeItem('experience', idx)} style={deleteBtn}>✕ Remove</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))', gap: '0.75rem', marginBottom: '0.75rem', marginTop: '0.5rem' }}>
+                    {[
+                      { field: 'company', label: 'Company Name', placeholder: 'Acme Corp' },
+                      { field: 'role', label: 'Job Title', placeholder: 'Software Engineer' },
+                      { field: 'dates', label: 'Dates', placeholder: 'Jan 2022 – Present' },
+                      { field: 'location', label: 'Location', placeholder: 'New York, NY' }
+                    ].map(f => (
+                      <div key={f.field}>
+                        <label style={subtleLabel}>{f.label}</label>
+                        <input type="text" value={exp[f.field]} onChange={e => updateItem('experience', idx, f.field, e.target.value)} placeholder={f.placeholder} style={textInput} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                    <label style={subtleLabel}>Key Achievements</label>
+                    <button onClick={() => addBullet('experience', idx)} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}>+ Add Bullet</button>
+                  </div>
+                  {(exp.bullets || []).map((bullet, bIdx) => {
+                    const isOpt = optimizingIndex?.section === 'experience' && optimizingIndex?.itemIndex === idx && optimizingIndex?.bulletIndex === bIdx
+                    return (
+                      <div key={bIdx} className="bullet-row">
+                        <span className="bullet-dot">•</span>
+                        <textarea
+                          rows={2}
+                          className="bullet-textarea"
+                          value={bullet}
+                          onChange={e => updateBullet('experience', idx, bIdx, e.target.value)}
+                          placeholder="Start with action verb: Optimized database..."
+                        />
+                        <div className="bullet-actions">
+                           <button
+                            onClick={() => optimizeBullet('experience', idx, bIdx)}
+                            disabled={isOpt}
+                            style={{ padding: '0.25rem 0.4rem', fontSize: '0.68rem', background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: '0.375rem', color: '#7c3aed', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}
+                          >
+                            {isOpt ? 'Optimizing...' : <><WandIcon /> Optimize</>}
+                          </button>
+                          <button onClick={() => removeBullet('experience', idx, bIdx)} style={{ padding: '0.25rem 0.4rem', fontSize: '0.68rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '0.375rem', color: '#dc2626', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>✕</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {optimizeError && <p style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '0.25rem' }}>{optimizeError}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 4: Projects */}
+          {activeStep === 3 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Projects</h3>
+                <button
+                  onClick={() => addItem('projects', { name: '', role: '', tech: '', bullets: [''] })}
+                  className="btn btn-secondary btn-sm"
+                  style={{ borderColor: '#6366f1', color: '#6366f1' }}
+                >
+                  + Add
+                </button>
+              </div>
+              {resumeData.projects.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af', fontSize: '0.85rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px dashed #d1d5db' }}>
+                  Click "+ Add" to add a project
+                </div>
+              )}
+              {resumeData.projects.map((proj, idx) => (
+                <div key={idx} style={sectionCardStyle}>
+                  <button onClick={() => removeItem('projects', idx)} style={deleteBtn}>✕ Remove</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))', gap: '0.75rem', marginBottom: '0.75rem', marginTop: '0.5rem' }}>
+                    {[
+                      { field: 'name', label: 'Project Name', placeholder: 'AI Resume Parser' },
+                      { field: 'role', label: 'Your Role', placeholder: 'Lead Developer' }
+                    ].map(f => (
+                      <div key={f.field}>
+                        <label style={subtleLabel}>{f.label}</label>
+                        <input type="text" value={proj[f.field]} onChange={e => updateItem('projects', idx, f.field, e.target.value)} placeholder={f.placeholder} style={textInput} />
+                      </div>
+                    ))}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={subtleLabel}>Technologies Used (comma-separated)</label>
+                      <input type="text" value={proj.tech} onChange={e => updateItem('projects', idx, 'tech', e.target.value)} placeholder="Spring Boot, React.js, PostgreSQL" style={textInput} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                    <label style={subtleLabel}>Key Features & Impact</label>
+                    <button onClick={() => addBullet('projects', idx)} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'Inter, sans-serif', fontWeight: 600 }}>+ Add Bullet</button>
+                  </div>
+                  {(proj.bullets || []).map((bullet, bIdx) => {
+                    const isOpt = optimizingIndex?.section === 'projects' && optimizingIndex?.itemIndex === idx && optimizingIndex?.bulletIndex === bIdx
+                    return (
+                      <div key={bIdx} className="bullet-row">
+                        <span className="bullet-dot">•</span>
+                        <textarea rows={2} className="bullet-textarea" value={bullet} onChange={e => updateBullet('projects', idx, bIdx, e.target.value)} placeholder="Built microservice pipeline reducing latency by 40%..." />
+                        <div className="bullet-actions">
+                          <button
+                            onClick={() => optimizeBullet('projects', idx, bIdx)}
+                            disabled={isOpt}
+                            style={{ padding: '0.25rem 0.4rem', fontSize: '0.68rem', background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: '0.375rem', color: '#7c3aed', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}
+                          >
+                            {isOpt ? 'Optimizing...' : <><WandIcon /> Optimize</>}
+                          </button>
+                          <button onClick={() => removeBullet('projects', idx, bIdx)} style={{ padding: '0.25rem 0.4rem', fontSize: '0.68rem', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '0.375rem', color: '#dc2626', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>✕</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 5: Education */}
+          {activeStep === 4 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Education</h3>
+                <button onClick={() => addItem('education', { institution: '', degree: '', major: '', dates: '', gpa: '' })} className="btn btn-secondary btn-sm" style={{ borderColor: '#6366f1', color: '#6366f1' }}>+ Add</button>
+              </div>
+              {resumeData.education.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af', fontSize: '0.85rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px dashed #d1d5db' }}>Click "+ Add" to add education</div>
+              )}
+              {resumeData.education.map((edu, idx) => (
+                <div key={idx} style={sectionCardStyle}>
+                  <button onClick={() => removeItem('education', idx)} style={deleteBtn}>✕ Remove</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    {[
+                      { field: 'institution', label: 'Institution', placeholder: 'Stanford University' },
+                      { field: 'degree', label: 'Degree', placeholder: 'B.S. / M.S.' },
+                      { field: 'major', label: 'Field of Study', placeholder: 'Computer Science' },
+                      { field: 'dates', label: 'Graduation Date', placeholder: 'May 2021' },
+                      { field: 'gpa', label: 'GPA / Scale', placeholder: '3.9/4.0' }
+                    ].map(f => (
+                      <div key={f.field}>
+                        <label style={subtleLabel}>{f.label}</label>
+                        <input type="text" value={edu[f.field]} onChange={e => updateItem('education', idx, f.field, e.target.value)} placeholder={f.placeholder} style={textInput} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 6: Skills */}
+          {activeStep === 5 && (
+            <div style={sectionCardStyle}>
+              <h3 style={sectionTitleStyle}>Technical Skills</h3>
+              <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: '0.875rem' }}>
+                Separate keywords with commas. ATS parsers match these to job description keywords.
+              </p>
+              {[
+                { cat: 'languages', label: 'Programming Languages', placeholder: 'Java, JavaScript, Python, SQL' },
+                { cat: 'frameworks', label: 'Frameworks & Libraries', placeholder: 'React.js, Spring Boot, Node.js' },
+                { cat: 'databases', label: 'Databases & Storage', placeholder: 'PostgreSQL, Redis, MongoDB' },
+                { cat: 'tools', label: 'Tools & Infrastructure', placeholder: 'Docker, Git, AWS, CI/CD' }
+              ].map(f => (
+                <div key={f.cat} style={{ marginBottom: '0.75rem' }}>
+                  <label style={subtleLabel}>{f.label}</label>
+                  <input type="text" value={resumeData.skills[f.cat]} onChange={e => handleSkillsChange(f.cat, e.target.value)} placeholder={f.placeholder} style={textInput} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Step nav buttons */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid #e9ecef', marginTop: '0.25rem' }}>
+            <button onClick={() => setActiveStep(prev => Math.max(0, prev - 1))} disabled={activeStep === 0} className="btn btn-secondary">
+              ← Previous
+            </button>
+            {activeStep < steps.length - 1 ? (
+              <button onClick={() => setActiveStep(prev => Math.min(steps.length - 1, prev + 1))} className="btn btn-primary">
+                Next →
+              </button>
+            ) : (
+              <button onClick={() => { saveDraft(false); alert('Draft saved!') }} className="btn btn-primary" style={{ background: '#10b981', borderColor: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <SuccessIcon /> Save & Finalize
+              </button>
+            )}
+          </div>
+
+          {/* AI JD Keywords Matcher */}
+          <div className="jd-toolkit-card">
+            <div className="jd-toolkit-title">
+              <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
+              AI Keyword Gap Analyzer
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.625rem' }}>
+              Paste a job description to detect missing tech keywords and auto-inject them.
+            </p>
+            <textarea
+              rows={3}
+              value={jdText}
+              onChange={e => setJdText(e.target.value)}
+              placeholder="Paste Job Description here..."
+              style={{ ...textInput, resize: 'vertical', minHeight: '4rem' }}
+            />
+            <button onClick={analyzeJobDescription} className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+              Analyze & Match Keywords
+            </button>
+            {jdAnalysis && (
+              <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                <div>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#059669', marginBottom: '0.25rem', display: 'inline-flex', alignItems: 'center' }}><SuccessIcon /> Matched ({jdAnalysis.matched.length})</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                    {jdAnalysis.matched.map((kw, i) => (
+                      <span key={i} style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: '#d1fae5', color: '#065f46', borderRadius: '0.25rem', border: '1px solid #a7f3d0', display: 'inline-flex', alignItems: 'center' }}><SuccessIcon /> {kw}</span>
+                    ))}
+                    {jdAnalysis.matched.length === 0 && <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>None matched yet.</span>}
+                  </div>
+                </div>
+                <div>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626', marginBottom: '0.25rem', display: 'inline-flex', alignItems: 'center' }}><WarningIcon /> Missing ({jdAnalysis.missing.length}) — Click to inject</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                    {jdAnalysis.missing.map((kw, i) => (
+                      <button key={i} onClick={() => autoInjectKeyword(kw)} title="Click to inject into Skills" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: '#fee2e2', color: '#991b1b', borderRadius: '0.25rem', border: '1px dashed #fca5a5', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>+ {kw}</button>
+                    ))}
+                    {jdAnalysis.missing.length === 0 && <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}><SuccessIcon /> All keywords matched!</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ===== RIGHT PANEL: ATS Resume Preview ===== */}
+        <div className="preview-container">
+          <div className="preview-header">
+            <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#111827' }}>Live ATS Resume Preview</h3>
+            <span style={{ fontSize: '0.75rem', color: '#6b7280', background: '#f1f5f9', padding: '0.25rem 0.625rem', borderRadius: '0.375rem', border: '1px solid #e2e8f0' }}>
+              Single-column · ATS compliant
+            </span>
+          </div>
+
+          {/* Paper preview wrapper */}
+          <div className="resume-preview-area">
+            {/* Actual ATS-safe resume document */}
+            <div
+              id="ats-resume-print-area"
+              style={{
+                width: '100%',
+                maxWidth: '50rem',
+                minHeight: '62.5rem',
+                backgroundColor: '#ffffff',
+                color: '#1e293b',
+                padding: '2.5rem',
+                boxShadow: '0 0.625rem 1.5625rem -0.3125rem rgba(0,0,0,0.15)',
+                fontFamily: 'system-ui, -apple-system, Arial, sans-serif',
+                fontSize: '11pt',
+                lineHeight: '1.45',
+                boxSizing: 'border-box',
+                borderRadius: '0.25rem'
+              }}
+            >
+              {/* ---- Header ---- */}
+              <div style={{ textAlign: 'center', borderBottom: '2px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
+                <h1 style={{ fontSize: '22pt', fontWeight: 'bold', margin: '0 0 0.2rem 0', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  {resumeData.personal.fullName || 'YOUR FULL NAME'}
+                </h1>
+                <div style={{ fontSize: '10.5pt', fontWeight: 600, color: '#475569', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {resumeData.personal.title || 'Professional Title'}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.25rem 0.75rem', fontSize: '9pt', color: '#475569' }}>
+                  {resumeData.personal.email && <span>{resumeData.personal.email}</span>}
+                  {resumeData.personal.phone && <span>| {resumeData.personal.phone}</span>}
+                  {resumeData.personal.location && <span>| {resumeData.personal.location}</span>}
+                  {resumeData.personal.website && <span>| {resumeData.personal.website}</span>}
+                  {resumeData.personal.linkedin && <span>| {resumeData.personal.linkedin}</span>}
+                  {resumeData.personal.github && <span>| {resumeData.personal.github}</span>}
+                </div>
+              </div>
+
+              {/* ---- Summary ---- */}
+              {resumeData.summary && (
+                <ResumeSection title="Professional Summary">
+                  <p style={{ fontSize: '9.5pt', margin: 0, color: '#334155', textAlign: 'justify' }}>{resumeData.summary}</p>
+                </ResumeSection>
+              )}
+
+              {/* ---- Experience ---- */}
+              {resumeData.experience.length > 0 && (
+                <ResumeSection title="Professional Experience">
+                  {resumeData.experience.map((exp, idx) => (
+                    <div key={idx} style={{ marginBottom: idx < resumeData.experience.length - 1 ? '0.625rem' : 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10pt', color: '#0f172a', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        <span>{exp.company}</span>
+                        <span style={{ fontWeight: 500 }}>{exp.dates}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontStyle: 'italic', fontSize: '9.5pt', color: '#475569', marginBottom: '3px', flexWrap: 'wrap' }}>
+                        <span>{exp.role}</span>
+                        <span>{exp.location}</span>
+                      </div>
+                      {exp.bullets?.length > 0 && (
+                        <ul style={{ margin: '0', paddingLeft: '1.125rem', fontSize: '9.5pt', color: '#334155' }}>
+                          {exp.bullets.map((b, bIdx) => b.trim() && <li key={bIdx} style={{ marginBottom: '2px', textAlign: 'justify' }}>{b}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </ResumeSection>
+              )}
+
+              {/* ---- Projects ---- */}
+              {resumeData.projects.length > 0 && (
+                <ResumeSection title="Projects & Technical Work">
+                  {resumeData.projects.map((proj, idx) => (
+                    <div key={idx} style={{ marginBottom: idx < resumeData.projects.length - 1 ? '0.625rem' : 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10pt', color: '#0f172a', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        <span>{proj.name} {proj.role && <span style={{ fontWeight: 'normal', fontStyle: 'italic', color: '#475569' }}>– {proj.role}</span>}</span>
+                        <span style={{ fontSize: '9pt', fontWeight: 'normal', fontStyle: 'italic', color: '#475569' }}>{proj.tech}</span>
+                      </div>
+                      {proj.bullets?.length > 0 && (
+                        <ul style={{ margin: '2px 0 0', paddingLeft: '1.125rem', fontSize: '9.5pt', color: '#334155' }}>
+                          {proj.bullets.map((b, bIdx) => b.trim() && <li key={bIdx} style={{ marginBottom: '2px', textAlign: 'justify' }}>{b}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </ResumeSection>
+              )}
+
+              {/* ---- Education ---- */}
+              {resumeData.education.length > 0 && (
+                <ResumeSection title="Education">
+                  {resumeData.education.map((edu, idx) => (
+                    <div key={idx} style={{ marginBottom: idx < resumeData.education.length - 1 ? '0.5rem' : 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10pt', color: '#0f172a', flexWrap: 'wrap' }}>
+                        <span>{edu.institution}</span>
+                        <span style={{ fontWeight: 500 }}>{edu.dates}</span>
+                      </div>
+                      <div style={{ fontSize: '9.5pt', color: '#475569', fontStyle: 'italic' }}>
+                        {edu.degree}{edu.major && ` in ${edu.major}`}{edu.gpa && ` — GPA: ${edu.gpa}`}
+                      </div>
+                    </div>
+                  ))}
+                </ResumeSection>
+              )}
+
+              {/* ---- Skills ---- */}
+              {(resumeData.skills.languages || resumeData.skills.frameworks || resumeData.skills.databases || resumeData.skills.tools) && (
+                <ResumeSection title="Technical Skills">
+                  <div style={{ fontSize: '9.5pt', lineHeight: '1.55', color: '#334155' }}>
+                    {resumeData.skills.languages && <div><strong>Languages:</strong> {resumeData.skills.languages}</div>}
+                    {resumeData.skills.frameworks && <div><strong>Frameworks & Libraries:</strong> {resumeData.skills.frameworks}</div>}
+                    {resumeData.skills.databases && <div><strong>Databases & Caching:</strong> {resumeData.skills.databases}</div>}
+                    {resumeData.skills.tools && <div><strong>Developer Tools & Infra:</strong> {resumeData.skills.tools}</div>}
+                  </div>
+                </ResumeSection>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* Small helper for resume section headings */
+function ResumeSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: '1.125rem' }}>
+      <h3 style={{
+        fontSize: '10.5pt',
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        color: '#0f172a',
+        borderBottom: '1.5px solid #cbd5e1',
+        paddingBottom: '2px',
+        marginBottom: '6px',
+        letterSpacing: '0.06em'
+      }}>
+        {title}
+      </h3>
+      {children}
+    </div>
+  )
 }
 
 export default BuilderView

@@ -6,6 +6,7 @@ import SettingsView from './components/SettingsView'
 import AuthView from './components/AuthView'
 import BuilderView from './components/BuilderView'
 import HomeView from './components/HomeView'
+import InterviewPrepView from './components/InterviewPrepView'
 
 export const Icons = {
   Home: () => (
@@ -75,6 +76,14 @@ export const Icons = {
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.3-4.3" />
     </svg>
+  ),
+  Interview: () => (
+    <svg className="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+      <path d="M6 6h10" />
+      <path d="M6 10h10" />
+      <path d="M6 14h10" />
+    </svg>
   )
 }
 
@@ -84,6 +93,7 @@ function App() {
     return saved ? 'dashboard' : 'home'
   })
   const [selectedScan, setSelectedScan] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   
   // Set up API Base URL with fallback (127.0.0.1 bypasses DNS errors when offline)
   const [apiUrl, setApiUrl] = useState(() => {
@@ -99,6 +109,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem('resume_analyzer_api_url', apiUrl)
   }, [apiUrl])
+
+  const navigate = (view, extra = {}) => {
+    setActiveView(view)
+    if (extra.clearScan) setSelectedScan(null)
+    setSidebarOpen(false) // close sidebar on mobile nav click
+  }
 
   const handleLoginSuccess = (userData) => {
     localStorage.setItem('resume_analyzer_user', JSON.stringify(userData))
@@ -124,52 +140,16 @@ function App() {
   if (!currentUser) {
     if (activeView === 'home') {
       return (
-        <div style={{
-          minHeight: '100vh',
-          background: 'radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%), linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))',
-          padding: '0 2rem'
-        }}>
-          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-            <HomeView 
-              onGetStarted={() => setActiveView('auth')} 
-              isLoggedIn={false} 
-              onGoToDashboard={() => setActiveView('dashboard')} 
-            />
-          </div>
-        </div>
+        <HomeView 
+          onGetStarted={() => setActiveView('auth')} 
+          isLoggedIn={false} 
+          onGoToDashboard={() => setActiveView('dashboard')} 
+        />
       )
     }
 
     return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%), linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative'
-      }}>
-        <button 
-          onClick={() => setActiveView('home')} 
-          style={{ 
-            position: 'absolute', 
-            top: '2rem', 
-            left: '2rem', 
-            background: 'none', 
-            border: 'none', 
-            color: '#94a3b8', 
-            cursor: 'pointer', 
-            fontSize: '0.9rem', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-            fontFamily: 'inherit',
-            fontWeight: 600
-          }}
-        >
-          ← Back to Home
-        </button>
+      <div style={{ minHeight: '100vh', background: '#f5f6fa' }}>
         <AuthView apiUrl={apiUrl} onLoginSuccess={handleLoginSuccess} onApiUrlChange={setApiUrl} />
       </div>
     )
@@ -177,8 +157,14 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Mobile overlay */}
+      <div
+        className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="logo-container">
           <div className="logo-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -194,11 +180,12 @@ function App() {
         </div>
 
         <nav>
+          <div className="sidebar-section-label">Main Menu</div>
           <ul className="nav-links">
             <li>
               <div 
                 className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
-                onClick={() => { setActiveView('dashboard'); setSelectedScan(null); }}
+                onClick={() => navigate('dashboard', { clearScan: true })}
               >
                 <Icons.Dashboard />
                 Dashboard
@@ -207,7 +194,7 @@ function App() {
             <li>
               <div 
                 className={`nav-item ${activeView === 'scanner' ? 'active' : ''}`}
-                onClick={() => { setActiveView('scanner'); }}
+                onClick={() => navigate('scanner')}
               >
                 <Icons.Scanner />
                 ATS Scanner
@@ -216,7 +203,7 @@ function App() {
             <li>
               <div 
                 className={`nav-item ${activeView === 'builder' ? 'active' : ''}`}
-                onClick={() => { setActiveView('builder'); setSelectedScan(null); }}
+                onClick={() => navigate('builder', { clearScan: true })}
               >
                 <Icons.Builder />
                 Resume Builder
@@ -224,8 +211,20 @@ function App() {
             </li>
             <li>
               <div 
+                className={`nav-item ${activeView === 'prep' ? 'active' : ''}`}
+                onClick={() => navigate('prep', { clearScan: true })}
+              >
+                <Icons.Interview />
+                Interview Prep
+              </div>
+            </li>
+          </ul>
+          <div className="sidebar-section-label" style={{ marginTop: '8px' }}>Reports</div>
+          <ul className="nav-links">
+            <li>
+              <div 
                 className={`nav-item ${activeView === 'history' ? 'active' : ''}`}
-                onClick={() => { setActiveView('history'); setSelectedScan(null); }}
+                onClick={() => navigate('history', { clearScan: true })}
               >
                 <Icons.History />
                 Scan History
@@ -234,10 +233,10 @@ function App() {
             <li>
               <div 
                 className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
-                onClick={() => { setActiveView('settings'); setSelectedScan(null); }}
+                onClick={() => navigate('settings', { clearScan: true })}
               >
                 <Icons.Settings />
-                Config Settings
+                Settings
               </div>
             </li>
           </ul>
@@ -281,45 +280,96 @@ function App() {
 
       {/* Main Panel Content Area */}
       <main className="main-content">
-        {activeView === 'dashboard' && (
-          <DashboardView 
-            apiUrl={apiUrl} 
-            currentUser={currentUser}
-            onViewScan={viewScanResult} 
-            onNavigateToScan={() => setActiveView('scanner')}
-          />
-        )}
-        
-        {activeView === 'scanner' && (
-          <ScannerView 
-            apiUrl={apiUrl} 
-            currentUser={currentUser}
-            initialScan={selectedScan} 
-            clearInitialScan={() => setSelectedScan(null)}
-          />
-        )}
-        
-        {activeView === 'history' && (
-          <HistoryView 
-            apiUrl={apiUrl} 
-            currentUser={currentUser}
-            onViewScan={viewScanResult} 
-          />
-        )}
-        
-        {activeView === 'settings' && (
-          <SettingsView 
-            apiUrl={apiUrl} 
-            setApiUrl={setApiUrl} 
-          />
-        )}
+        {/* Top Navigation Bar */}
+        <div className="top-navbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Hamburger for mobile */}
+            <button
+              className="navbar-hamburger"
+              onClick={() => setSidebarOpen(prev => !prev)}
+              aria-label="Toggle Menu"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>
+              {activeView === 'dashboard' && 'Analytics Dashboard'}
+              {activeView === 'scanner' && 'ATS Scanner'}
+              {activeView === 'builder' && 'Resume Builder'}
+              {activeView === 'prep' && 'Interview Prep'}
+              {activeView === 'history' && 'Scan History'}
+              {activeView === 'settings' && 'Settings'}
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => navigate('scanner')}
+              className="btn btn-primary"
+              style={{ padding: '0.4375rem 0.875rem', fontSize: '0.8rem' }}
+            >
+              + New Scan
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.75rem', borderLeft: '1px solid #e9ecef' }}>
+              <div style={{ width: '2rem', height: '2rem', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                {currentUser.username.substring(0, 2).toUpperCase()}
+              </div>
+              <span className="navbar-username" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>{currentUser.username}</span>
+            </div>
+          </div>
+        </div>
 
-        {activeView === 'builder' && (
-          <BuilderView 
-            apiUrl={apiUrl} 
-            currentUser={currentUser}
-          />
-        )}
+        {/* Page Content */}
+        <div className="page-content">
+          {activeView === 'dashboard' && (
+            <DashboardView 
+              apiUrl={apiUrl} 
+              currentUser={currentUser}
+              onViewScan={viewScanResult} 
+              onNavigateToScan={() => setActiveView('scanner')}
+            />
+          )}
+          
+          {activeView === 'scanner' && (
+            <ScannerView 
+              apiUrl={apiUrl} 
+              currentUser={currentUser}
+              initialScan={selectedScan} 
+              clearInitialScan={() => setSelectedScan(null)}
+            />
+          )}
+          
+          {activeView === 'history' && (
+            <HistoryView 
+              apiUrl={apiUrl} 
+              currentUser={currentUser}
+              onViewScan={viewScanResult} 
+            />
+          )}
+          
+          {activeView === 'settings' && (
+            <SettingsView 
+              apiUrl={apiUrl} 
+              setApiUrl={setApiUrl} 
+            />
+          )}
+
+          {activeView === 'builder' && (
+            <BuilderView 
+              apiUrl={apiUrl} 
+              currentUser={currentUser}
+            />
+          )}
+
+          {activeView === 'prep' && (
+            <InterviewPrepView 
+              apiUrl={apiUrl} 
+              currentUser={currentUser}
+            />
+          )}
+        </div>
       </main>
     </div>
   )

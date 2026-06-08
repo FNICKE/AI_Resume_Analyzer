@@ -201,7 +201,15 @@ function DashboardView({ apiUrl, currentUser, onViewScan, onNavigateToScan }) {
                   <tbody>
                     {stats.recentScans.map((scan) => (
                       <tr key={scan.id}>
-                        <td style={{ fontWeight: '600' }}>📄 {scan.resume?.filename || 'Unnamed Resume'}</td>
+                        <td style={{ fontWeight: '600' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <svg style={{ width: '16px', height: '16px', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                              <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                            {scan.resume?.filename || 'Unnamed Resume'}
+                          </span>
+                        </td>
                         <td>
                           <span className={`score-badge ${getScoreBadgeClass(scan.atsScore)}`}>
                             {scan.atsScore}%

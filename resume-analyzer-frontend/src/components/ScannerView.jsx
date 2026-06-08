@@ -194,7 +194,14 @@ function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
           {error && (
             <div className="glass-panel" style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.02)', marginBottom: '1.5rem', color: '#f87171' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>⚠</span> {error}
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </span>
+                {error}
               </div>
             </div>
           )}
@@ -231,8 +238,13 @@ function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
                   {file ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                       <p style={{ color: 'var(--text-primary)', fontWeight: '600' }}>File Selected</p>
-                      <div className="file-info-pill">
-                        <span>📄</span>
+                      <div className="file-info-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          <svg style={{ width: '14px', height: '14px' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                        </span>
                         {file.name}
                       </div>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -343,15 +355,24 @@ function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
                     <span>Email Info</span>
-                    <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Verified</span>
+                    <span style={{ color: '#10b981', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <svg style={{ width: '14px', height: '14px' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Verified
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
                     <span>Phone Details</span>
-                    <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Verified</span>
+                    <span style={{ color: '#10b981', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <svg style={{ width: '14px', height: '14px' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Verified
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
                     <span>Social/GitHub Links</span>
-                    <span style={{ color: '#10b981', fontWeight: '600' }}>✓ Verified</span>
+                    <span style={{ color: '#10b981', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <svg style={{ width: '14px', height: '14px' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Verified
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
                     <span>Standard Sections</span>
@@ -400,7 +421,10 @@ function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
                     Missing Core Skills ({parseSafe(result.missingKeywords).length})
                   </h4>
                   {parseSafe(result.missingKeywords).length === 0 ? (
-                    <p style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: '600' }}>✓ Perfect skill coverage! No missing keywords identified.</p>
+                    <p style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <svg style={{ width: '14px', height: '14px' }} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Perfect skill coverage! No missing keywords identified.
+                    </p>
                   ) : (
                     <div className="pills-container">
                       {parseSafe(result.missingKeywords).map((kw, idx) => (
@@ -448,6 +472,21 @@ function ScannerView({ apiUrl, currentUser, initialScan, clearInitialScan }) {
                 </div>
 
                 <div className="suggestion-list">
+                  {parseSafe(result.suggestions).fallbackActive && (
+                    <div style={{
+                      background: 'rgba(217, 119, 6, 0.15)',
+                      borderLeft: '4px solid #d97706',
+                      color: '#fbbf24',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '4px',
+                      fontSize: '0.85rem',
+                      marginBottom: '1.25rem',
+                      lineHeight: '1.4'
+                    }}>
+                      <strong>Notice:</strong> Your Gemini API free-tier request quota is currently exhausted. Standard rule-based parsing has been applied.
+                    </div>
+                  )}
+
                   {activeTab === 'summary' && (
                     <div style={{ lineHeight: '1.6', fontSize: '0.95rem' }}>
                       <p style={{ marginBottom: '1rem', fontWeight: '500', color: 'var(--primary)' }}>
